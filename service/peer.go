@@ -19,6 +19,13 @@ func (ps *PeerService) FindByUuid(uuid string) *model.Peer {
 	DB.Where("uuid = ?", uuid).First(p)
 	return p
 }
+
+// FindByIdAndUuid 根据当前设备 ID 和 UUID 查找设备，避免同一 UUID 的历史 ID 命中旧记录
+func (ps *PeerService) FindByIdAndUuid(deviceId string, uuid string) *model.Peer {
+	p := &model.Peer{}
+	DB.Where("id = ? and uuid = ?", deviceId, uuid).First(p)
+	return p
+}
 func (ps *PeerService) InfoByRowId(id uint) *model.Peer {
 	p := &model.Peer{}
 	DB.Where("row_id = ?", id).First(p)
@@ -34,7 +41,13 @@ func (ps *PeerService) FindByUserIdAndUuid(uuid string, userId uint) *model.Peer
 
 // UuidBindUserId 绑定用户id
 func (ps *PeerService) UuidBindUserId(deviceId string, uuid string, userId uint) {
-	peer := ps.FindByUuid(uuid)
+	// 优先绑定本次登录对应的设备记录。同一 UUID 在客户端重装或 ID 更新后
+	// 可能存在多条历史记录，直接按 UUID First 会把用户绑定到旧设备记录。
+	peer := ps.FindByIdAndUuid(deviceId, uuid)
+	if peer.RowId == 0 {
+		// 保留旧数据兼容：当前设备信息尚未上报时，仍尝试绑定已有 UUID 记录。
+		peer = ps.FindByUuid(uuid)
+	}
 	// 如果存在则更新
 	if peer.RowId > 0 {
 		peer.UserId = userId
