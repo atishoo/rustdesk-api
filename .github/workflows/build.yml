@@ -30,6 +30,7 @@ on:
         description: 'Management console branch, tag, or commit'
         required: false
   push:
+    # UltraPro branch pushes build deployable artifacts automatically.
     branches:
       - ultrapro
     tags:
