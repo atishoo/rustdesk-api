@@ -1,0 +1,11 @@
+name: UltraPro push test
+
+on:
+  push:
+    branches: [ultrapro]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo push-triggered
