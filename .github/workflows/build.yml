@@ -1,6 +1,13 @@
 name: Build
 
 on:
+  push:
+    # UltraPro branch pushes build deployable artifacts automatically.
+    branches:
+      - ultrapro
+    tags:
+      - 'v*.*.*'  # 当推送带有版本号的 tag（例如 v1.0.0）时触发工作流
+      - 'test*'
   workflow_dispatch:
     inputs:
       BASE_IMAGE_NAMESPACE:
@@ -29,14 +36,6 @@ on:
       WEBCLIENT_REF:
         description: 'Management console branch, tag, or commit'
         required: false
-  push:
-    # UltraPro branch pushes build deployable artifacts automatically.
-    branches:
-      - ultrapro
-    tags:
-      - 'v*.*.*'  # 当推送带有版本号的 tag（例如 v1.0.0）时触发工作流
-      - 'test*'
-
 permissions:
   contents: write
   packages: write
