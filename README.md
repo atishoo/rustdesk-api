@@ -290,6 +290,8 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 
 发布工作流的 `full-s6` 镜像包含 API、控制台和配套的 UltraPro Server。先发布配套 Server 镜像，再构建 API。可用 Actions 仓库变量或 Docker 构建参数 `RUSTDESK_SERVER_IMAGE` 固定 Server 镜像的提交标签或摘要。若 GHCR 配套镜像为私有，在该包的 **Manage Actions access** 中为 API 仓库授予 **Read** 权限，供工作流拉取。
 
+UltraPro 分支构建完成后，可直接部署多架构镜像 `ghcr.io/atishoo/rustdesk-api:full-s6`。GHCR 包为私有时，先执行 `docker login ghcr.io`，再使用该镜像和现有 Compose 配置启动服务。
+
 #### 使用`lejianwen/server-s6`镜像运行
 
 - 已解决链接超时问题
