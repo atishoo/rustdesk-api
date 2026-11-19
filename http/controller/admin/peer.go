@@ -1,14 +1,17 @@
 package admin
 
 import (
+	"errors"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"gorm.io/gorm"
-	"strconv"
-	"time"
 )
 
 type Peer struct {
@@ -40,7 +43,7 @@ func (ct *Peer) Detail(c *gin.Context) {
 // Create 创建设备
 // @Tags 设备
 // @Summary 创建设备
-// @Description 创建设备
+// @Description 设备 ID 和 UUID 均必填，每项最多 256 字节。
 // @Accept  json
 // @Produce  json
 // @Param body body admin.PeerForm true "设备信息"
@@ -59,8 +62,16 @@ func (ct *Peer) Create(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
-	p := f.ToPeer()
-	err := service.AllService.PeerService.Create(p)
+	p, fields := f.ToPeer()
+	if !p.HasIdentity() {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	err := service.AllService.PeerService.Create(p, fields...)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -90,7 +101,7 @@ func (ct *Peer) List(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	res := service.AllService.PeerService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
+	res := service.AllService.PeerService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
 		if query.TimeAgo > 0 {
 			lt := time.Now().Unix() - int64(query.TimeAgo)
 			tx.Where("last_online_time < ?", lt)
@@ -106,7 +117,7 @@ func (ct *Peer) List(c *gin.Context) {
 			tx.Where("hostname like ?", "%"+query.Hostname+"%")
 		}
 		if query.Uuids != "" {
-			tx.Where("uuid in (?)", query.Uuids)
+			tx.Where("uuid IN ?", strings.Split(query.Uuids, ","))
 		}
 		if query.Username != "" {
 			tx.Where("username like ?", "%"+query.Username+"%")
@@ -124,7 +135,7 @@ func (ct *Peer) List(c *gin.Context) {
 // Update 编辑
 // @Tags 设备
 // @Summary 设备编辑
-// @Description 设备编辑
+// @Description 设备 ID 和 UUID 各最多 256 字节。更新 UUID 时必须提供非空值。
 // @Accept  json
 // @Produce  json
 // @Param body body admin.PeerForm true "设备信息"
@@ -138,7 +149,7 @@ func (ct *Peer) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	if f.RowId == 0 {
+	if f.RowId == 0 || (f.Uuid != nil && *f.Uuid == "") {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
@@ -147,8 +158,8 @@ func (ct *Peer) Update(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
-	u := f.ToPeer()
-	err := service.AllService.PeerService.Update(u)
+	u, fields := f.ToPeer()
+	err := service.AllService.PeerService.Update(u, fields...)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -231,10 +242,6 @@ func (ct *Peer) SimpleData(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	res := service.AllService.PeerService.List(1, 99999, func(tx *gorm.DB) {
-		//可以公开的情报
-		tx.Select("id,version")
-		tx.Where("id in (?)", f.Ids)
-	})
+	res := service.AllService.PeerService.SimpleData(f.Ids)
 	response.Success(c, res)
 }

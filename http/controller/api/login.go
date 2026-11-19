@@ -47,14 +47,22 @@ func (l *Login) Login(c *gin.Context) {
 	}
 
 	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		loginLimiter.RecordFailedAttempt(clientIp)
-		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "ParamsError", c.RemoteIP(), c.ClientIP()))
-		response.Error(c, errList[0])
-		return
+	var u *model.User
+	if len(errList) == 0 {
+		u = service.AllService.UserService.InfoByUsernamePassword(f.Username, f.Password)
+	} else {
+		// LDAP decides which nonempty credentials it accepts. The local fallback
+		// keeps the native form's existing username and password limits.
+		if global.Config.Ldap.Enable && f.Username != "" && f.Password != "" {
+			u, err = service.AllService.LdapService.Authenticate(f.Username, f.Password)
+		}
+		if err != nil || u == nil {
+			loginLimiter.RecordFailedAttempt(clientIp)
+			global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "ParamsError", c.RemoteIP(), c.ClientIP()))
+			response.Error(c, errList[0])
+			return
+		}
 	}
-
-	u := service.AllService.UserService.InfoByUsernamePassword(f.Username, f.Password)
 
 	if u.Id == 0 {
 		loginLimiter.RecordFailedAttempt(clientIp)
@@ -74,7 +82,7 @@ func (l *Login) Login(c *gin.Context) {
 		f.DeviceInfo.Type = model.LoginLogClientWeb
 	}
 
-	ut := service.AllService.UserService.Login(u, &model.LoginLog{
+	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
 		UserId:   u.Id,
 		Client:   f.DeviceInfo.Type,
 		DeviceId: f.Id,
@@ -82,7 +90,11 @@ func (l *Login) Login(c *gin.Context) {
 		Ip:       c.ClientIP(),
 		Type:     model.LoginLogTypeAccount,
 		Platform: f.DeviceInfo.Os,
-	})
+	}, true)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.ErrorResponse{Error: response.TranslateMsg(c, "SystemError")})
+		return
+	}
 
 	c.JSON(http.StatusOK, apiResp.LoginRes{
 		AccessToken: ut.Token,
@@ -135,7 +147,10 @@ func (l *Login) Logout(c *gin.Context) {
 	u := service.AllService.UserService.CurUser(c)
 	token, ok := c.Get("token")
 	if ok {
-		service.AllService.UserService.Logout(u, token.(string))
+		if err := service.AllService.UserService.Logout(u, token.(string)); err != nil {
+			c.JSON(http.StatusInternalServerError, response.ErrorResponse{Error: response.TranslateMsg(c, "OperationFailed")})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, nil)
 

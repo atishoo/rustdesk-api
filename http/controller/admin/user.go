@@ -124,8 +124,47 @@ func (ct *User) Update(c *gin.Context) {
 		return
 	}
 	u := f.ToUser()
-	err := service.AllService.UserService.Update(u)
+	fields := []string{"username", "group_id", "status"}
+	if f.IsAdmin != nil {
+		fields = append(fields, "is_admin")
+	}
+	if f.Avatar != "" {
+		fields = append(fields, "avatar")
+	}
+	for field, value := range map[string]*string{"email": f.Email, "nickname": f.Nickname, "remark": f.Remark} {
+		if value != nil {
+			fields = append(fields, field)
+		}
+	}
+	err := service.AllService.UserService.Update(u, fields...)
 	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
+	}
+	response.Success(c, nil)
+}
+
+// UpdateStatus 启用或停用用户
+// @Tags 用户
+// @Summary 启用或停用用户
+// @Accept json
+// @Produce json
+// @Param body body admin.UserStatusForm true "用户状态"
+// @Success 200 {object} response.Response
+// @Router /admin/user/updateStatus [post]
+// @Security token
+func (ct *User) UpdateStatus(c *gin.Context) {
+	f := &admin.UserStatusForm{}
+	if err := c.ShouldBindJSON(f); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
+		return
+	}
+	if errors := global.Validator.ValidStruct(c, f); len(errors) > 0 {
+		response.Fail(c, 101, errors[0])
+		return
+	}
+	u := &model.User{IdModel: model.IdModel{Id: f.Id}, Status: f.Status}
+	if err := service.AllService.UserService.Update(u, "status"); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
 	}
@@ -278,7 +317,7 @@ func (ct *User) MyOauth(c *gin.Context) {
 		ops = append(ops, oa.Op)
 	}
 	uts := service.AllService.UserService.UserThirdsByUserId(u.Id)
-	var res []*adResp.UserOauthItem
+	res := make([]*adResp.UserOauthItem, 0)
 	for _, oa := range oal.Oauths {
 		item := &adResp.UserOauthItem{
 			Op: oa.Op,
@@ -333,16 +372,20 @@ func (ct *User) Register(c *gin.Context) {
 	}
 	if regStatus == model.COMMON_STATUS_DISABLED {
 		// 需要管理员审核
-		response.Fail(c, 101, response.TranslateMsg(c, "RegisterSuccessWaitAdminConfirm"))
+		response.Success(c, gin.H{"pending": true})
 		return
 	}
 	// 注册成功后自动登录
-	ut := service.AllService.UserService.Login(u, &model.LoginLog{
+	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
 		UserId: u.Id,
 		Client: model.LoginLogClientWebAdmin,
 		Uuid:   "",
 		Ip:     c.ClientIP(),
 		Type:   model.LoginLogTypeAccount,
-	})
+	}, false)
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "SystemError"))
+		return
+	}
 	responseLoginSuccess(c, u, ut.Token)
 }

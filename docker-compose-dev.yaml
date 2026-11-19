@@ -1,12 +1,13 @@
 services:
   rustdesk-api:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.dev
+      additional_contexts:
+        rustdesk-web: ../rustdesk-web
       args:
         COUNTRY: CN
-        FRONTEND_GIT_REPO: https://github.com/lejianwen/rustdesk-api-web.git
-        FRONTEND_GIT_BRANCH: master
+        VITE_NATIVE_CLIENT_SCHEME: ${VITE_NATIVE_CLIENT_SCHEME:-rustdesk}
     # image: lejianwen/rustdesk-api
     container_name: rustdesk-api
     environment:

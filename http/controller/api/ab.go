@@ -11,6 +11,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
+	"gorm.io/gorm"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,16 +36,19 @@ func (a *Ab) Ab(c *gin.Context) {
 	al := service.AllService.AddressBookService.ListByUserIdAndCollectionId(user.Id, 0, 1, 1000)
 	tags := service.AllService.TagService.ListByUserIdAndCollectionId(user.Id, 0)
 
+	peers := al.AddressBooks
+	if peers == nil {
+		peers = []*model.AddressBook{}
+	}
 	tagColors := map[string]uint{}
-	//将tags中的name转成一个以逗号分割的字符串
-	var tagNames []string
+	tagNames := make([]string, 0, len(tags.Tags))
 	for _, tag := range tags.Tags {
 		tagNames = append(tagNames, tag.Name)
 		tagColors[tag.Name] = tag.Color
 	}
 	tgc, _ := json.Marshal(tagColors)
 	res := &api.AbList{
-		Peers:     al.AddressBooks,
+		Peers:     peers,
 		Tags:      tagNames,
 		TagColors: string(tgc),
 	}
@@ -68,7 +72,7 @@ func (a *Ab) Ab(c *gin.Context) {
 // @Security BearerAuth
 func (a *Ab) UpAb(c *gin.Context) {
 	abf := &requstform.AddressBookForm{}
-	err := c.ShouldBindJSON(&abf)
+	err := c.ShouldBindJSON(abf)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
@@ -79,21 +83,32 @@ func (a *Ab) UpAb(c *gin.Context) {
 		response.Error(c, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	tc := map[string]uint{}
-	err = json.Unmarshal([]byte(abd.TagColors), &tc)
-	if err != nil {
-		response.Error(c, response.TranslateMsg(c, "ParamsError")+err.Error())
+	if abd.Peers == nil || abd.Tags == nil {
+		response.Error(c, response.TranslateMsg(c, "ParamsError"))
 		return
+	}
+	tc := map[string]uint{}
+	if abd.TagColors != "" {
+		if err := json.Unmarshal([]byte(abd.TagColors), &tc); err != nil {
+			response.Error(c, response.TranslateMsg(c, "ParamsError")+err.Error())
+			return
+		}
 	}
 	user := service.AllService.UserService.CurUser(c)
 
-	err = service.AllService.AddressBookService.UpdateAddressBook(abd.Peers, user.Id)
+	peers := make([]*model.AddressBook, len(abd.Peers))
+	for i, peer := range abd.Peers {
+		peers[i] = peer.AddressBook
+	}
+	err = service.AllService.AddressBookService.UpdateAddressBook(peers, user.Id, abd.Tags, tc)
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Error(c, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
 	}
-
-	service.AllService.TagService.UpdateTags(user.Id, tc)
 
 	c.JSON(http.StatusOK, nil)
 }
@@ -161,14 +176,13 @@ func (a *Ab) TagAdd(c *gin.Context) {
 		return
 	}
 
-	tag := service.AllService.TagService.InfoByUserIdAndNameAndCollectionId(uid, t.Name, cid)
-	if tag != nil && tag.Id != 0 {
-		response.Error(c, response.TranslateMsg(c, "ItemExists"))
-		return
-	}
 	t.UserId = uid
 	t.CollectionId = cid
 	err = service.AllService.TagService.Create(t)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Error(c, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -214,13 +228,13 @@ func (a *Ab) TagRename(c *gin.Context) {
 		response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
-	ntag := service.AllService.TagService.InfoByUserIdAndNameAndCollectionId(uid, t.New, cid)
-	if ntag != nil && ntag.Id != 0 {
+	patch := *tag
+	patch.Name = t.New
+	err = service.AllService.TagService.Update(tag, &patch)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		response.Error(c, response.TranslateMsg(c, "ItemExists"))
 		return
 	}
-	tag.Name = t.New
-	err = service.AllService.TagService.Update(tag)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -265,8 +279,9 @@ func (a *Ab) TagUpdate(c *gin.Context) {
 		response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
-	tag.Color = t.Color
-	err = service.AllService.TagService.Update(tag)
+	patch := *tag
+	patch.Color = t.Color
+	err = service.AllService.TagService.Update(tag, &patch)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -595,16 +610,12 @@ func (a *Ab) PeerAdd(c *gin.Context) {
 	f.UserId = uid
 	ab := f.ToAddressBook()
 	ab.CollectionId = cid
-	if ab.Platform == "" || ab.Username == "" || ab.Hostname == "" {
-		peer := service.AllService.PeerService.FindById(ab.Id)
-		if peer.RowId != 0 {
-			ab.Platform = service.AllService.AddressBookService.PlatformFromOs(peer.Os)
-			ab.Username = peer.Username
-			ab.Hostname = peer.Hostname
-		}
-	}
 
 	err = service.AllService.AddressBookService.AddAddressBook(ab)
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Error(c, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -645,7 +656,7 @@ func (a *Ab) PeerDel(c *gin.Context) {
 	}
 
 	for _, id := range *f {
-		ab := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(uid, id, cid)
+		ab := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(uid, model.AddressBookTarget(id), cid)
 		if ab == nil || ab.RowId == 0 {
 			response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 			return
@@ -694,14 +705,12 @@ func (a *Ab) PeerUpdate(c *gin.Context) {
 	}
 	//fmt.Println(f)
 	//判断f["Id"]是否存在
-	fid, ok := f["id"]
+	fid, ok := f["id"].(string)
 	if !ok {
 		response.Error(c, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	fidstr := fid.(string)
-
-	ab := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(uid, fidstr, cid)
+	ab := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(uid, model.AddressBookTarget(fid), cid)
 	if ab == nil || ab.RowId == 0 {
 		response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 		return
@@ -719,6 +728,14 @@ func (a *Ab) PeerUpdate(c *gin.Context) {
 		f["tags"], _ = json.Marshal(tags)
 	}
 	err = service.AllService.AddressBookService.UpdateByMap(ab, f)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Error(c, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

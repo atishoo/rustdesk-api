@@ -1,19 +1,28 @@
 package middleware
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
-	"net/http"
 )
 
 func Limiter() gin.HandlerFunc {
+	return limitLogin(func(c *gin.Context, message string) {
+		response.Fail(c, http.StatusLocked, message)
+	})
+}
+
+func NativeLoginLimiter() gin.HandlerFunc {
+	return limitLogin(response.Error)
+}
+
+func limitLogin(reject func(*gin.Context, string)) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		loginLimiter := global.LoginLimiter
-		clientIp := c.ClientIP()
-		banned, _ := loginLimiter.CheckSecurityStatus(clientIp)
+		banned, _ := global.LoginLimiter.CheckSecurityStatus(c.ClientIP())
 		if banned {
-			response.Fail(c, http.StatusLocked, response.TranslateMsg(c, "Banned"))
+			reject(c, response.TranslateMsg(c, "Banned"))
 			c.Abort()
 			return
 		}

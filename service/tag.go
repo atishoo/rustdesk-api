@@ -1,11 +1,59 @@
 package service
 
 import (
+	"encoding/json"
+	"errors"
+	"slices"
+
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"gorm.io/gorm"
 )
 
 type TagService struct {
+}
+
+var (
+	ErrInvalidAddressBookTags = errors.New("InvalidAddressBookTags")
+	ErrReferencedTagMove      = errors.New("ReferencedTagMove")
+)
+
+func tagsInCollection(tx *gorm.DB, userID, collectionID uint) *gorm.DB {
+	return tx.Model(&model.Tag{}).Where("user_id = ? AND collection_id = ?", userID, collectionID)
+}
+
+func decodeAddressBookTags(encoded []byte) ([]string, error) {
+	if len(encoded) == 0 {
+		return nil, nil
+	}
+	var values []*string
+	if err := json.Unmarshal(encoded, &values); err != nil {
+		return nil, ErrInvalidAddressBookTags
+	}
+	var tags []string
+	for _, value := range values {
+		if value == nil {
+			return nil, ErrInvalidAddressBookTags
+		}
+		tags = append(tags, *value)
+	}
+	return tags, nil
+}
+
+func validateAddressBookTags(tx *gorm.DB, userID, collectionID uint, encoded []byte) error {
+	tags, err := decodeAddressBookTags(encoded)
+	if err != nil || len(tags) == 0 {
+		return err
+	}
+	var available []string
+	if err := tagsInCollection(tx, userID, collectionID).Where("name IN ?", tags).Pluck("name", &available).Error; err != nil {
+		return err
+	}
+	for _, name := range tags {
+		if !slices.Contains(available, name) {
+			return ErrInvalidAddressBookTags
+		}
+	}
+	return nil
 }
 
 func (s *TagService) Info(id uint) *model.Tag {
@@ -14,9 +62,14 @@ func (s *TagService) Info(id uint) *model.Tag {
 	return p
 }
 func (s *TagService) InfoByUserIdAndNameAndCollectionId(userid uint, name string, cid uint) *model.Tag {
-	p := &model.Tag{}
-	DB.Where("user_id = ? and name = ? and collection_id = ?", userid, name, cid).First(p)
-	return p
+	var candidates []model.Tag
+	tagsInCollection(DB, userid, cid).Where("name = ?", name).Find(&candidates)
+	for _, tag := range candidates {
+		if tag.Name == name {
+			return &tag
+		}
+	}
+	return &model.Tag{}
 }
 
 func (s *TagService) ListByUserId(userId uint) (res *model.TagList) {
@@ -32,34 +85,32 @@ func (s *TagService) ListByUserIdAndCollectionId(userId, cid uint) (res *model.T
 	})
 	return
 }
-func (s *TagService) UpdateTags(userId uint, tags map[string]uint) {
-	tx := DB.Begin()
-	//先查询所有tag
-	var allTags []*model.Tag
-	tx.Where("user_id = ?", userId).Find(&allTags)
-	for _, t := range allTags {
-		if _, ok := tags[t.Name]; !ok {
-			//删除
-			tx.Delete(t)
-		} else {
-			if tags[t.Name] != t.Color {
-				//更新
-				t.Color = tags[t.Name]
-				tx.Save(t)
+func updatePersonalAddressBookTags(tx *gorm.DB, userId uint, pending map[string]struct{}, colors map[string]uint) error {
+	var current []*model.Tag
+	if err := tagsInCollection(tx, userId, 0).Find(&current).Error; err != nil {
+		return err
+	}
+	for _, tag := range current {
+		_, keep := pending[tag.Name]
+		if !keep {
+			if err := tx.Delete(tag).Error; err != nil {
+				return err
 			}
-			//移除
-			delete(tags, t.Name)
+			continue
+		}
+		if color, ok := colors[tag.Name]; ok && color != tag.Color {
+			if err := tx.Model(tag).Update("color", color).Error; err != nil {
+				return err
+			}
+		}
+		delete(pending, tag.Name)
+	}
+	for name := range pending {
+		if err := tx.Create(&model.Tag{Name: name, Color: colors[name], UserId: userId}).Error; err != nil {
+			return err
 		}
 	}
-	//新增
-	for tag, color := range tags {
-		t := &model.Tag{}
-		t.Name = tag
-		t.Color = color
-		t.UserId = userId
-		tx.Create(t)
-	}
-	tx.Commit()
+	return nil
 }
 
 // InfoById 根据用户id取用户信息
@@ -85,14 +136,108 @@ func (s *TagService) List(page, pageSize uint, where func(tx *gorm.DB)) (res *mo
 
 // Create 创建
 func (s *TagService) Create(u *model.Tag) error {
-	res := DB.Create(u).Error
-	return res
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockAddressBookOwners(tx, u.UserId); err != nil {
+			return err
+		}
+		if err := checkUniqueTagName(tx, u); err != nil {
+			return err
+		}
+		return tx.Create(u).Error
+	})
 }
+
 func (s *TagService) Delete(u *model.Tag) error {
-	return DB.Delete(u).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockAddressBookOwners(tx, u.UserId); err != nil {
+			return err
+		}
+		if err := checkCurrentTag(tx, u); err != nil {
+			return err
+		}
+		if err := rewriteTagReferences(tx, u, nil, false); err != nil {
+			return err
+		}
+		return tx.Delete(u).Error
+	})
 }
 
 // Update 更新
-func (s *TagService) Update(u *model.Tag) error {
-	return DB.Model(u).Select("*").Omit("created_at").Updates(u).Error
+func (s *TagService) Update(current, patch *model.Tag) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockAddressBookOwners(tx, current.UserId, patch.UserId); err != nil {
+			return err
+		}
+		if err := checkCurrentTag(tx, current); err != nil {
+			return err
+		}
+		moving := current.UserId != patch.UserId || current.CollectionId != patch.CollectionId
+		if moving || current.Name != patch.Name {
+			if err := checkUniqueTagName(tx, patch); err != nil {
+				return err
+			}
+			if err := rewriteTagReferences(tx, current, &patch.Name, moving); err != nil {
+				return err
+			}
+		}
+		return tx.Model(current).Select("name", "user_id", "collection_id", "color").Updates(patch).Error
+	})
+}
+
+func checkUniqueTagName(tx *gorm.DB, tag *model.Tag) error {
+	var names []string
+	if err := tagsInCollection(tx, tag.UserId, tag.CollectionId).Where("name = ? AND id <> ?", tag.Name, tag.Id).Pluck("name", &names).Error; err != nil {
+		return err
+	}
+	if slices.Contains(names, tag.Name) {
+		return gorm.ErrDuplicatedKey
+	}
+	return nil
+}
+
+func checkCurrentTag(tx *gorm.DB, tag *model.Tag) error {
+	var current model.Tag
+	if err := tagsInCollection(tx, tag.UserId, tag.CollectionId).Select("name").Where("id = ?", tag.Id).Take(&current).Error; err != nil {
+		return err
+	}
+	if current.Name != tag.Name {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func rewriteTagReferences(tx *gorm.DB, tag *model.Tag, replacement *string, moving bool) error {
+	var entries []model.AddressBook
+	if err := tx.Select("row_id", "tags").Where("user_id = ? AND collection_id = ?", tag.UserId, tag.CollectionId).Find(&entries).Error; err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		var names []string
+		if err := json.Unmarshal(entry.Tags, &names); err != nil {
+			return err
+		}
+		if !slices.Contains(names, tag.Name) {
+			continue
+		}
+		if moving {
+			return ErrReferencedTagMove
+		}
+		if replacement == nil {
+			names = slices.DeleteFunc(names, func(name string) bool { return name == tag.Name })
+		} else {
+			for i, name := range names {
+				if name == tag.Name {
+					names[i] = *replacement
+				}
+			}
+		}
+		encoded, err := json.Marshal(names)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&entry).Update("tags", encoded).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

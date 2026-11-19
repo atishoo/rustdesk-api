@@ -4,9 +4,9 @@ import * as rendezvous from "./rendezvous.js";
 import { loadVp9 } from "./codec";
 import * as sha256 from "fast-sha256";
 import * as globals from "./globals";
-import { decompress, mapKey, sleep } from "./common";
+import { decompress, getWebClientUri, mapKey, matchesRendezvous, mixedContentWebSocketError, PORT, proxyIdPath, sleep, websocketScheme } from "./common";
+import { decodeSharedPassword, getServerConf, getWebClientNetworkOption, loadManagedPassword, managedLaunch, readManagedLaunchToken, saveManagedPassword, sharedLaunch, sharedTarget } from "./ljw";
 
-const PORT = 21116;
 // only the first is used to init `HOST`
 const HOSTS = [
   "rs-sg.rustdesk.com",
@@ -15,10 +15,22 @@ const HOSTS = [
 ];
 let HOST = localStorage.getItem("rendezvous-server") || HOSTS[0];
 //根据协议设置为ws或wss
-const SCHEMA=location.protocol=="https:"?"wss://":"ws://";
+const managedSessionChanged = new Error("登录状态无法验证，请返回控制台重新打开 Web Client");
+const sharedPasswordRejected = "设备拒绝了分享密码，请联系分享者生成新的分享链接。";
 
 type MsgboxCallback = (type: string, title: string, text: string) => void;
 type DrawCallback = (data: Uint8Array) => void;
+type RelayTarget = { server: string; relay: string };
+type ConnectionTarget = RelayTarget & { id: string; key: string };
+type SharedTarget = ConnectionTarget & { passwordBase64: string | undefined; options: { info: object } };
+
+declare global {
+  interface Window {
+    rustdeskManagedTarget?: ConnectionTarget;
+    rustdeskWebClientRelayTarget?: RelayTarget;
+  }
+}
+
 //const cursorCanvas = document.createElement("canvas");
 
 export default class Connection {
@@ -33,6 +45,15 @@ export default class Connection {
   _firstFrame: Boolean | undefined;
   _videoDecoder: any;
   _password: Uint8Array | undefined;
+  _managedTarget: ConnectionTarget | undefined;
+  _managedSessionCheck: AbortController | undefined;
+  _managedToken: string | undefined;
+  _managedPasswordAttempt: string | undefined;
+  _ordinaryAccountToken: string | null = null;
+  _ordinaryNetwork?: { server: string | null; key: string | null };
+  _startGeneration = 0;
+  _sharedTarget: SharedTarget | undefined;
+  _sharePasswordTried = false;
   _options: any;
   _videoTestSpeed: number[];
   //_cursors: { [name: number]: any };
@@ -42,6 +63,7 @@ export default class Connection {
     this._draw = globals.draw;
     this._msgs = [];
     this._id = "";
+    if (managedLaunch) this._options = {};
     this._videoTestSpeed = [0, 0];
     //this._cursors = {};
   }
@@ -50,6 +72,10 @@ export default class Connection {
     try {
       await this._start(id);
     } catch (e: any) {
+      if (e === managedSessionChanged) {
+        this.msgbox("error", "Login Error", managedSessionChanged.message);
+        return;
+      }
       this.msgbox(
         "error",
         "Connection Error",
@@ -59,10 +85,89 @@ export default class Connection {
   }
 
   async _start(id: string) {
-    if (!this._options) {
-      this._options = globals.getPeers()[id] || {};
+    const generation = ++this._startGeneration;
+    const managedTarget = window.rustdeskManagedTarget;
+    if (managedLaunch && (!id || !managedTarget || managedTarget.id !== id)) throw new Error("受管 Web Client 配置不可用");
+    if (sharedLaunch) {
+      if (!sharedTarget || sharedTarget.id !== id) throw new Error("分享链接不可用或连接目标无效");
+      if (sharedTarget.passwordBase64 === undefined) {
+        this.msgbox("error", "Login Error", sharedPasswordRejected);
+        return;
+      }
     }
-    if (!this._password) {
+    this._managedTarget = managedLaunch ? managedTarget : undefined;
+    this._sharedTarget = sharedLaunch ? sharedTarget : undefined;
+    if (this._sharedTarget) {
+      this._password = undefined;
+      this._sharePasswordTried = false;
+    }
+    const target = this._managedTarget ?? this._sharedTarget;
+    const requestToken = this._managedTarget ? readManagedLaunchToken() : undefined;
+    if (this._managedTarget) {
+      if (!requestToken) throw managedSessionChanged;
+      this._managedSessionCheck?.abort();
+      const check = new AbortController();
+      this._managedSessionCheck = check;
+      const timeout = window.setTimeout(() => check.abort(), 5000);
+      let deployment: { id_server: string; key: string; relay_server: string } | undefined;
+      try {
+        const response = await fetch("/api/admin/config/server", {
+          headers: { "api-token": requestToken },
+          mode: "same-origin",
+          credentials: "omit",
+          redirect: "error",
+          cache: "no-store",
+          signal: check.signal,
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result?.code === 0) deployment = result.data;
+        }
+      } catch {
+        // A failed request cannot confirm the console session.
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      if (this._managedSessionCheck !== check) return;
+      this._managedSessionCheck = undefined;
+      if (!deployment || readManagedLaunchToken() !== requestToken) throw managedSessionChanged;
+      if (deployment.id_server !== this._managedTarget.server || deployment.key !== this._managedTarget.key ||
+          deployment.relay_server !== this._managedTarget.relay) {
+        throw new Error("服务端配置已变化，请返回控制台重新打开 Web Client");
+      }
+      this._managedToken = requestToken;
+      const { password, remember } = loadManagedPassword(this._managedTarget);
+      this._options.password = password;
+      this._options.remember = remember;
+      this._password = undefined;
+      this._hash = undefined;
+      this._managedPasswordAttempt = undefined;
+    }
+    if (!target) this._ordinaryAccountToken = sessionStorage.getItem("access_token");
+    const accountToken = this._ordinaryAccountToken;
+    const deployment = accountToken ? await getServerConf(accountToken) : undefined;
+    if (accountToken && (generation !== this._startGeneration || globals.getConn() !== this ||
+        sessionStorage.getItem("access_token") !== accountToken)) return;
+    if (!target) {
+      const network = {
+        server: getWebClientNetworkOption("custom-rendezvous-server"),
+        key: getWebClientNetworkOption("key"),
+      };
+      if (this._ordinaryNetwork &&
+          (this._ordinaryNetwork.server !== network.server || this._ordinaryNetwork.key !== network.key)) {
+        this._options = undefined;
+        this._password = undefined;
+        this._hash = undefined;
+      }
+      this._ordinaryNetwork = network;
+    }
+    const uri = target ? getWebClientUri(target.server, false) : getDefaultUri();
+    const signalUri = new URL(uri);
+    this._id = id;
+    if (!this._options) {
+      this._options = this._sharedTarget ? { ...this._sharedTarget.options } : globals.getPeers()[id] || {};
+    }
+    if (!this._sharedTarget && !this._password) {
       const p = this.getOption("password");
       if (p) {
         try {
@@ -79,26 +184,49 @@ export default class Connection {
       }
     }, 1);
     this.loadVideoDecoder();
-    const uri = getDefaultUri();
     const ws = new Websock(uri, true);
     this._ws = ws;
-    this._id = id;
     console.log(
       new Date() + ": Conntecting to rendezvoous server: " + uri + ", for " + id
     );
     await ws.open();
+    if (this._ws !== ws) return;
+    if (this._managedTarget && readManagedLaunchToken() !== requestToken) {
+      this.close();
+      throw managedSessionChanged;
+    }
     console.log(new Date() + ": Connected to rendezvoous server");
     const conn_type = rendezvous.ConnType.DEFAULT_CONN;
     const nat_type = rendezvous.NatType.SYMMETRIC;
+    const key = this.getRendezvousKey() || "";
+    let token: string | undefined;
+    const defaultApi = sessionStorage.getItem("webclient-config-api-server");
+    let relayTarget = target ?? (sessionStorage.getItem("api-server") === defaultApi ? getPublishedRelayTarget(signalUri) : undefined);
+    if (this._managedTarget && signalUri.protocol === "wss:") {
+      token = requestToken;
+    } else if (accountToken && sessionStorage.getItem("access_token") === accountToken &&
+               deployment?.apiServer === (sessionStorage.getItem("api-server") || location.origin) &&
+               deployment?.key === key && matchesRendezvous(signalUri, deployment.id_server)) {
+      if (signalUri.protocol === "wss:") token = accountToken;
+      relayTarget = getPublishedRelayTarget(signalUri, {
+        server: deployment.id_server,
+        relay: typeof deployment.relay_server === "string" ? deployment.relay_server : "",
+      }) ?? { server: deployment.id_server, relay: "" };
+    }
+    const manualRelay = !target && getWebClientNetworkOption("relay-server");
+    if (manualRelay) {
+      relayTarget = getPublishedRelayTarget(signalUri, { server: uri, relay: manualRelay }) ?? relayTarget;
+    }
     const punch_hole_request = rendezvous.PunchHoleRequest.fromPartial({
-      id,
-      licence_key: localStorage.getItem("key") || undefined,
+      id: this.deviceId(),
+      licence_key: key || undefined,
       conn_type,
       nat_type,
-      token: localStorage.getItem("access_token") || undefined,
+      token,
     });
     ws.sendRendezvous({ punch_hole_request });
     const msg = (await ws.next()) as rendezvous.RendezvousMessage;
+    if (this._ws !== ws) return;
     ws.close();
     console.log(new Date() + ": Got relay response", msg);
     const phr = msg.punch_hole_response;
@@ -129,44 +257,65 @@ export default class Connection {
         this.msgbox("error", "Error", "Remote version is low, not support web");
         return;
       }
-      await this.connectRelay(rr);
+      await this.connectRelay(rr, relayTarget);
     }
   }
 
-  async connectRelay(rr: rendezvous.RelayResponse) {
+  async connectRelay(rr: rendezvous.RelayResponse, target?: RelayTarget) {
     const pk = rr.pk;
-    let uri = rr.relay_server;
-    if (uri) {
-      uri = getrUriFromRs(uri, true, 2);
-    } else {
-      uri = getDefaultUri(true);
-    }
+    const uri = getWebClientRelayUri(target, rr.relay_server);
     const uuid = rr.uuid;
     console.log(new Date() + ": Connecting to relay server: " + uri);
     const ws = new Websock(uri, false);
-    await ws.open();
-    console.log(new Date() + ": Connected to relay server");
     this._ws = ws;
+    await ws.open();
+    if (this._ws !== ws) return;
+    console.log(new Date() + ": Connected to relay server");
     const request_relay = rendezvous.RequestRelay.fromPartial({
-      licence_key: localStorage.getItem("key") || undefined,
+      licence_key: this.getRendezvousKey() || undefined,
       uuid,
     });
     ws.sendRendezvous({ request_relay });
-    const secure = (await this.secure(pk)) || false;
+    const requireSecure = Boolean(this._managedTarget?.key || (this._sharedTarget?.key && this._sharedTarget.passwordBase64));
+    let secure = false;
+    try {
+      secure = await this.secure(ws, pk, requireSecure);
+    } catch (error) {
+      if (!requireSecure) throw error;
+    }
+    if (this._ws !== ws) return;
+    if (requireSecure && !secure) {
+      this.close();
+      this.msgbox("error", "Login Error", this._sharedTarget ? "无法验证分享目标的身份，连接已关闭。" : "无法验证设备身份，连接已关闭。");
+      return;
+    }
     globals.pushEvent("connection_ready", { secure, direct: false });
-    await this.msgLoop();
+    await this.msgLoop(ws);
   }
 
-  async secure(pk: Uint8Array | undefined) {
+  getRendezvousKey() {
+    return (this._managedTarget ?? this._sharedTarget)?.key ?? this._ordinaryNetwork?.key;
+  }
+
+  deviceId() {
+    if (!this._id.endsWith("/r") && !this._id.endsWith("\\r")) return this._id;
+    const id = this._id.slice(0, -2);
+    if (this._managedTarget || this._sharedTarget) return id;
+    return id && !/[@?\/\\\s]/.test(id) ? id : this._id;
+  }
+
+  async secure(ws: Websock, pk: Uint8Array | undefined, required: boolean) {
+    const fallback = () => {
+      if (!required) ws.sendMessage({ public_key: message.PublicKey.fromPartial({}) });
+      return false;
+    };
     if (pk) {
       const RS_PK = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
       try {
-        pk = await globals.verify(pk, localStorage.getItem("key") || RS_PK);
+        pk = await globals.verify(pk, this.getRendezvousKey() || RS_PK);
         if (pk) {
           const idpk = message.IdPk.decode(pk);
-          if (idpk.id == this._id) {
-            pk = idpk.pk;
-          }
+          pk = idpk.id === this.deviceId() ? idpk.pk : undefined;
         }
         if (pk?.length != 32) {
           pk = undefined;
@@ -181,45 +330,32 @@ export default class Connection {
         );
     }
     if (!pk) {
-      // send an empty message out in case server is setting up secure and waiting for first message
-      const public_key = message.PublicKey.fromPartial({});
-      this._ws?.sendMessage({ public_key });
-      return;
+      return fallback();
     }
-    const msg = (await this._ws?.next()) as message.Message;
+    const msg = (await ws.next()) as message.Message;
     let signedId: any = msg?.signed_id;
     if (!signedId) {
       console.error("Handshake failed: invalid message type");
-      const public_key = message.PublicKey.fromPartial({});
-      this._ws?.sendMessage({ public_key });
-      return;
+      return fallback();
     }
     try {
       signedId = await globals.verify(signedId.id, Uint8Array.from(pk!));
     } catch (e) {
       console.error(e);
-      // fall back to non-secure connection in case pk mismatch
-      console.error("pk mismatch, fall back to non-secure");
-      const public_key = message.PublicKey.fromPartial({});
-      this._ws?.sendMessage({ public_key });
-      return;
+      return fallback();
     }
     const idpk = message.IdPk.decode(signedId);
     const id = idpk.id;
     const theirPk = idpk.pk;
-    if (id != this._id!) {
+    if (id != this.deviceId()) {
       console.error("Handshake failed: sign failure");
-      const public_key = message.PublicKey.fromPartial({});
-      this._ws?.sendMessage({ public_key });
-      return;
+      return fallback();
     }
     if (theirPk.length != 32) {
       console.error(
         "Handshake failed: invalid public box key length from peer"
       );
-      const public_key = message.PublicKey.fromPartial({});
-      this._ws?.sendMessage({ public_key });
-      return;
+      return fallback();
     }
     const [mySk, asymmetric_value] = globals.genBoxKeyPair();
     const secret_key = globals.genSecretKey();
@@ -228,18 +364,27 @@ export default class Connection {
       asymmetric_value,
       symmetric_value,
     });
-    this._ws?.sendMessage({ public_key });
-    this._ws?.setSecretKey(secret_key);
+    ws.sendMessage({ public_key });
+    ws.setSecretKey(secret_key);
     console.log("secured");
     return true;
   }
 
-  async msgLoop() {
-    while (true) {
-      const msg = (await this._ws?.next()) as message.Message;
+  async msgLoop(ws: Websock) {
+    while (this._ws === ws) {
+      const msg = (await ws.next()) as message.Message;
+      if (this._ws !== ws) return;
       // console.log("msg", msg);
       if (msg?.hash) {
         this._hash = msg?.hash;
+        if (this._sharedTarget) {
+          const sharedPassword = this._sharedTarget.passwordBase64;
+          if (sharedPassword && !this._sharePasswordTried) {
+            this._sharePasswordTried = true;
+            this.loginWithPassword(decodeSharedPassword(sharedPassword));
+          }
+          continue;
+        }
         const tmp = this.getOption('tmppwd')
         if(!this._password && tmp){
           this._password = Uint8Array.from(JSON.parse("[" + tmp + "]"));
@@ -256,9 +401,22 @@ export default class Connection {
         }
       } else if (msg?.login_response) {
         const r = msg?.login_response;
+        const managedPasswordAttempt = this._managedPasswordAttempt;
+        this._managedPasswordAttempt = undefined;
         if (r.error) {
           if (r.error == "Wrong Password") {
             this._password = undefined;
+            if (this._sharedTarget) {
+              this._sharedTarget.passwordBase64 = undefined;
+              this._hash = undefined;
+              this.close();
+              this.msgbox("error", "Login Error", sharedPasswordRejected);
+              return;
+            }
+            if (this._managedTarget && managedPasswordAttempt) {
+              saveManagedPassword(this._managedTarget, undefined, managedPasswordAttempt);
+              delete this._options.password;
+            }
             this.msgbox(
               "re-input-password",
               r.error,
@@ -327,7 +485,7 @@ export default class Connection {
   }
 
   msgbox(type_: string, title: string, text: string) {
-    this._msgbox?.(type_, title, text);
+    if (globals.getConn() === this) this._msgbox?.(type_, title, text);
   }
 
   draw(frame: any) {
@@ -336,9 +494,14 @@ export default class Connection {
   }
 
   close() {
+    this._startGeneration++;
+    this._managedSessionCheck?.abort();
+    this._managedSessionCheck = undefined;
+    this._managedToken = undefined;
     this._msgs = [];
     clearInterval(this._interval);
     this._ws?.close();
+    this._ws = undefined;
     this._videoDecoder?.close();
   }
 
@@ -356,14 +519,13 @@ export default class Connection {
   }
 
   login(password: string | undefined = undefined) {
+    if (sharedLaunch) return;
+    if (this._managedTarget) {
+      const cached = this.getOption("password");
+      this._managedPasswordAttempt = !password && this._password?.toString() === cached ? cached : undefined;
+    }
     if (password) {
-      const salt = this._hash?.salt;
-      let p = hash([password, salt!]);
-      this._password = p;
-      const challenge = this._hash?.challenge;
-      p = hash([p, challenge!]);
-      this.msgbox("connecting", "Connecting...", "Logging in...");
-      this._sendLoginMessage(p);
+      this.loginWithPassword(password);
     } else {
       let p = this._password;
       if (p) {
@@ -374,14 +536,26 @@ export default class Connection {
     }
   }
 
+  private loginWithPassword(password: string) {
+    this._password = hash([password, this._hash?.salt!]);
+    const response = hash([this._password, this._hash?.challenge!]);
+    this.msgbox("connecting", "Connecting...", "Logging in...");
+    this._sendLoginMessage(response);
+  }
+
   async reconnect() {
     this.close();
     await this.start(this._id);
   }
 
   _sendLoginMessage(password: Uint8Array | undefined = undefined) {
+    if (this._managedTarget && (!this._managedToken || readManagedLaunchToken() !== this._managedToken)) {
+      this.close();
+      this.msgbox("error", "Login Error", managedSessionChanged.message);
+      return;
+    }
     const login_request = message.LoginRequest.fromPartial({
-      username: this._id!,
+      username: this.deviceId(),
       my_id: "web", // to-do
       my_name: "web", // to-do
       password,
@@ -481,10 +655,12 @@ export default class Connection {
         const p = this._password.toString();
         if (p != this.getOption("password")) {
           this.setOption("password", p);
+          if (this._managedTarget) saveManagedPassword(this._managedTarget, p);
           console.log("remember password of " + this._id);
         }
       }
     } else {
+      if (this._managedTarget) saveManagedPassword(this._managedTarget, undefined, this.getOption("password"));
       this.setOption("password", undefined);
     }
   }
@@ -555,9 +731,12 @@ export default class Connection {
       this._options[name] = value;
     }
     this._options["tm"] = new Date().getTime();
+    if (managedLaunch || this._sharedTarget || this._ordinaryAccountToken !== sessionStorage.getItem("access_token") ||
+        this._ordinaryNetwork?.server !== getWebClientNetworkOption("custom-rendezvous-server") ||
+        this._ordinaryNetwork?.key !== getWebClientNetworkOption("key")) return;
     const peers = globals.getPeers();
     peers[this._id] = this._options;
-    localStorage.setItem("peers", JSON.stringify(peers));
+    sessionStorage.setItem("peers", JSON.stringify(peers));
   }
 
   inputKey(
@@ -737,7 +916,7 @@ function testDelay() {
   var nearest = "";
   HOSTS.forEach((host) => {
     const now = new Date().getTime();
-    new Websock(getrUriFromRs(host), true).open().then(() => {
+    new Websock(getWebClientUri(host, false), true).open().then(() => {
       console.log("latency of " + host + ": " + (new Date().getTime() - now));
       if (!nearest) {
         HOST = host;
@@ -747,36 +926,70 @@ function testDelay() {
   });
 }
 
-testDelay();
+if (!managedLaunch && !sharedLaunch) testDelay();
 
-function getDefaultUri(isRelay: Boolean = false): string {
-  const host = localStorage.getItem("custom-rendezvous-server");
-  return getrUriFromRs(host || HOST, isRelay);
-}
-/*
-function isHttps() {
-  return window.location.protocol === "https:"
+function getDefaultUri(isRelay = false): string {
+  const host = getWebClientNetworkOption("custom-rendezvous-server") || HOST;
+  return getWebClientUri(host, isRelay);
 }
 
-function domain(uri: string) {
-    return uri.indexOf(":") > 0 ? uri.split(":")[0] : uri
-}*/
-
-function getrUriFromRs(
-  uri: string,
-  isRelay: Boolean = false,
-  roffset: number = 0
-): string {
-    //v2
-  //if (isHttps()) return "wss://" + domain(uri) + "/ws/" + (isRelay ? "relay" : "id");
-  if (uri.indexOf(":") > 0) {
-    const tmp = uri.split(":");
-    const port = parseInt(tmp[1]);
-    uri = tmp[0] + ":" + (port + (isRelay ? roffset || 3 : 2));
-  } else {
-    uri += ":" + (PORT + (isRelay ? 3 : 2));
+function getPublishedRelayTarget(uri: URL, target = window.rustdeskWebClientRelayTarget): RelayTarget | undefined {
+  if (!target || !matchesRendezvous(uri, target.server)) return undefined;
+  try {
+    if (target.relay) getWebClientUri(target.relay, true, true);
+    if (target.relay || websocketScheme.test(target.server)) return target;
+  } catch {
+    // Invalid deployment configuration cannot replace the announced relay.
   }
-  return SCHEMA + uri;
+  return undefined;
+}
+
+function configuredWebRelay(target?: RelayTarget): URL | undefined {
+  if (!target || !websocketScheme.test(target.relay)) return undefined;
+  try {
+    return new URL(getWebClientUri(target.relay, true, true));
+  } catch {
+    return undefined;
+  }
+}
+
+function webSocketPort(uri: URL): number {
+  return Number(uri.port || (uri.protocol === "wss:" ? 443 : 80));
+}
+
+function getWebClientRelayUri(target: RelayTarget | undefined, relayServer: string): string {
+  if (websocketScheme.test(relayServer)) {
+    try {
+      return getWebClientUri(relayServer, true, true);
+    } catch (error) {
+      const configured = configuredWebRelay(target);
+      if (configured && error === mixedContentWebSocketError) {
+        const advertised = new URL(relayServer);
+        const standardRawRelay = advertised.pathname === "/" && webSocketPort(advertised) === PORT + 3;
+        const sameListener = configured.pathname === advertised.pathname && webSocketPort(configured) === webSocketPort(advertised);
+        if (configured.hostname === advertised.hostname && (standardRawRelay || sameListener)) return configured.href;
+      }
+      throw error;
+    }
+  }
+  if (!relayServer) {
+    if (!target) return getDefaultUri(true);
+    return target.relay ? getWebClientUri(target.relay, true, true) : getWebClientUri(target.server, true);
+  }
+  const advertisedUri = getWebClientUri(relayServer, true, true);
+  if (!target) return advertisedUri;
+  const advertised = new URL(advertisedUri);
+  const configured = configuredWebRelay(target);
+  if (configured) {
+    // A configured proxy can stand in for this host's standard relay or the same WS listener.
+    return configured.hostname === advertised.hostname &&
+      (webSocketPort(advertised) === PORT + 3 || webSocketPort(configured) === webSocketPort(advertised))
+      ? configured.href : advertisedUri;
+  }
+  if (target.relay || !websocketScheme.test(target.server)) return advertisedUri;
+  const idProxy = new URL(target.server);
+  return proxyIdPath.test(idProxy.pathname) && advertised.hostname === idProxy.hostname && webSocketPort(advertised) === PORT + 3
+    ? getWebClientUri(target.server, true) : advertisedUri;
 }
 
 function hash(datas: (string | Uint8Array)[]): Uint8Array {

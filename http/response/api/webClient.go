@@ -41,6 +41,6 @@ func (wcpp *WebClientPeerPayload) FromShareRecord(sr *model.ShareRecord) {
 		Username: "",
 		Hostname: "",
 		Platform: "",
-		Id:       sr.PeerId,
+		Id:       string(sr.PeerId),
 	}
 }

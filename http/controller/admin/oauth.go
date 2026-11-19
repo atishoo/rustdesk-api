@@ -1,14 +1,20 @@
 package admin
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
+	"github.com/lejianwen/rustdesk-api/v2/http/middleware"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	adminReq "github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
+	"github.com/lejianwen/rustdesk-api/v2/utils"
+	"gorm.io/gorm"
 )
 
 type Oauth struct {
@@ -36,6 +42,10 @@ func (o *Oauth) ToBind(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
+	if !middleware.AdminRedirectAllowed(f.RedirectURL, c.GetHeader("Origin")) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
 	u := service.AllService.UserService.CurUser(c)
 
 	utr := service.AllService.UserService.UserThirdInfo(u.Id, f.Op)
@@ -51,11 +61,12 @@ func (o *Oauth) ToBind(c *gin.Context) {
 	}
 
 	service.AllService.OauthService.SetOauthCache(state, &service.OauthCacheItem{
-		Action:   service.OauthActionTypeBind,
-		Op:       f.Op,
-		UserId:   u.Id,
-		Verifier: verifier,
-		Nonce:    nonce,
+		Action:      service.OauthActionTypeBind,
+		Op:          f.Op,
+		UserId:      u.Id,
+		Verifier:    verifier,
+		Nonce:       nonce,
+		RedirectURL: f.RedirectURL,
 	}, 5*60)
 
 	response.Success(c, gin.H{
@@ -81,9 +92,16 @@ func (o *Oauth) Confirm(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "OauthExpired"))
 		return
 	}
+	if v.Action != service.OauthActionTypeLogin || v.Op != model.OauthTypeWebauth || v.UserId != 0 {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
 	u := service.AllService.UserService.CurUser(c)
-	v.UserId = u.Id
-	service.AllService.OauthService.SetOauthCache(j.Code, v, 0)
+	v = service.AllService.OauthService.ConfirmWebauth(j.Code, u.Id)
+	if v == nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OauthExpired"))
+		return
+	}
 	response.Success(c, v)
 }
 
@@ -104,17 +122,46 @@ func (o *Oauth) BindConfirm(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "OauthExpired"))
 		return
 	}
+	if oauthCache.Action != service.OauthActionTypeLogin || oauthCache.UserId != 0 || oauthCache.OpenId == "" || oauthCache.Binding {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	ticket := ""
+	if oauthCache.DeviceType == model.LoginLogClientWebAdmin {
+		ticket = utils.RandomString(32)
+		if ticket == "" {
+			response.Error(c, response.TranslateMsg(c, "SystemError"))
+			return
+		}
+	}
+	claimed := *oauthCache
+	claimed.Binding = true
+	if !oauthService.ReplaceOauthCache(j.Code, oauthCache, &claimed) {
+		response.Fail(c, 101, response.TranslateMsg(c, "OauthExpired"))
+		return
+	}
 	oauthUser := oauthCache.ToOauthUser()
 	user := service.AllService.UserService.CurUser(c)
-	err = oauthService.BindOauthUser(user.Id, oauthUser, oauthCache.Op)
+	err = oauthService.BindOauthUser(user.Id, oauthUser, oauthCache.Op, oauthCache.ProviderIdentity)
 	if err != nil {
+		if errors.Is(err, service.ErrOauthIdentityChanged) {
+			oauthService.DeleteOauthCache(j.Code)
+			response.Fail(c, 101, response.TranslateMsg(c, "OauthExpired"))
+			return
+		}
+		oauthService.ReplaceOauthCache(j.Code, &claimed, oauthCache)
 		response.Fail(c, 101, response.TranslateMsg(c, "BindFail"))
 		return
 	}
 
-	oauthCache.UserId = user.Id
-	oauthService.SetOauthCache(j.Code, oauthCache, 0)
-	response.Success(c, oauthCache)
+	confirmed := *oauthCache
+	confirmed.UserId = user.Id
+	confirmed.Ticket = ticket
+	if !oauthService.ReplaceOauthCache(j.Code, &claimed, &confirmed) {
+		response.Success(c, gin.H{"ticket": "", "reauth_required": true})
+		return
+	}
+	response.Success(c, gin.H{"ticket": ticket})
 }
 
 func (o *Oauth) Unbind(c *gin.Context) {
@@ -125,17 +172,24 @@ func (o *Oauth) Unbind(c *gin.Context) {
 		return
 	}
 	u := service.AllService.UserService.CurUser(c)
-	utr := service.AllService.UserService.UserThirdInfo(u.Id, f.Op)
-	if utr.Id == 0 {
+	loginBanned, _ := global.LoginLimiter.CheckSecurityStatus(c.ClientIP())
+	err = service.AllService.OauthService.UnBindOauthUser(u.Id, f.Op, f.LdapPassword, loginBanned)
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
-		return
-	}
-	err = service.AllService.OauthService.UnBindOauthUser(u.Id, f.Op)
-	if err != nil {
+	case errors.Is(err, service.ErrLastLoginMethod):
+		response.Fail(c, 101, response.TranslateMsg(c, "LastLoginMethod"))
+	case errors.Is(err, service.ErrLdapUnbindPasswordRequired):
+		response.Fail(c, 111, response.TranslateMsg(c, "LdapUnbindPasswordRequired"))
+	case errors.Is(err, service.ErrLdapUnbindVerificationFailed):
+		response.Fail(c, 112, response.TranslateMsg(c, "LdapUnbindVerificationFailed"))
+	case errors.Is(err, service.ErrLdapUnbindRateLimited):
+		response.Fail(c, http.StatusLocked, response.TranslateMsg(c, "LdapUnbindRateLimited"))
+	case err != nil:
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
-		return
+	default:
+		response.Success(c, nil)
 	}
-	response.Success(c, nil)
 }
 
 // Detail Oauth
@@ -251,7 +305,11 @@ func (o *Oauth) Update(c *gin.Context) {
 		return
 	}
 	u := f.ToOauth()
-	err := service.AllService.OauthService.Update(u)
+	err := service.AllService.OauthService.Update(u, f.Scopes != nil)
+	if errors.Is(err, service.ErrOauthIdentityBound) {
+		response.Fail(c, 101, response.TranslateMsg(c, "OauthIdentityBound"))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -287,6 +345,10 @@ func (o *Oauth) Delete(c *gin.Context) {
 		err := service.AllService.OauthService.Delete(u)
 		if err == nil {
 			response.Success(c, nil)
+			return
+		}
+		if errors.Is(err, service.ErrOauthIdentityBound) {
+			response.Fail(c, 101, response.TranslateMsg(c, "OauthIdentityBound"))
 			return
 		}
 		response.Fail(c, 101, err.Error())

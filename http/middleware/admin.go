@@ -1,10 +1,19 @@
 package middleware
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 )
+
+func requireAdminLogin(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, response.Response{
+		Code:    http.StatusUnauthorized,
+		Message: response.TranslateMsg(c, "NeedLogin"),
+	})
+}
 
 // BackendUserAuth 后台权限验证中间件
 func BackendUserAuth() gin.HandlerFunc {
@@ -13,14 +22,12 @@ func BackendUserAuth() gin.HandlerFunc {
 		//测试先关闭
 		token := c.GetHeader("api-token")
 		if token == "" {
-			response.Fail(c, 403, response.TranslateMsg(c, "NeedLogin"))
-			c.Abort()
+			requireAdminLogin(c)
 			return
 		}
 		user, ut := service.AllService.UserService.InfoByAccessToken(token)
 		if user.Id == 0 {
-			response.Fail(c, 403, response.TranslateMsg(c, "NeedLogin"))
-			c.Abort()
+			requireAdminLogin(c)
 			return
 		}
 

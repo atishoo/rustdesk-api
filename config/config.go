@@ -2,9 +2,12 @@ package config
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 const (
@@ -20,6 +23,7 @@ type App struct {
 	ShowSwagger      int           `mapstructure:"show-swagger"`
 	TokenExpire      time.Duration `mapstructure:"token-expire"`
 	WebSso           bool          `mapstructure:"web-sso"`
+	AdminOrigins     string        `mapstructure:"admin-origins"`
 	DisablePwdLogin  bool          `mapstructure:"disable-pwd-login"`
 	CaptchaThreshold int           `mapstructure:"captcha-threshold"`
 	BanThreshold     int           `mapstructure:"ban-threshold"`
@@ -67,6 +71,14 @@ func Init(rowVal *Config, path string) *viper.Viper {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 	v.SetEnvPrefix("RUSTDESK_API")
+	v.SetDefault("app.admin-origins", "")
+	v.SetDefault("app.captcha-threshold", -1)
+	v.SetDefault("app.ban-threshold", 10)
+	v.SetDefault("gin.trust-proxy", "")
+	v.SetDefault("jwt.key", "")
+	v.SetDefault("jwt.expire-duration", 168*time.Hour)
+	_ = v.BindEnv("rustdesk.must-login")
+	v.SetDefault("rustdesk.webclient-share-api-server", "")
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
 	err := v.ReadInConfig()
@@ -90,6 +102,27 @@ func Init(rowVal *Config, path string) *viper.Viper {
 	*/
 	if err := v.Unmarshal(rowVal); err != nil {
 		panic(fmt.Errorf("Fatal error config: %s \n", err))
+	}
+	if rowVal.Jwt.Key != "" && rowVal.Jwt.ExpireDuration <= 0 {
+		panic("jwt.expire-duration must be positive when JWT is enabled")
+	}
+	if address := strings.TrimSpace(rowVal.Rustdesk.WebclientShareApiServer); address != "" {
+		base, err := url.Parse(address)
+		if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Hostname() == "" || base.User != nil || strings.ContainsAny(address, "?#") {
+			panic("rustdesk.webclient-share-api-server must be an absolute HTTP(S) URL without user information, query, or fragment")
+		}
+		if port := base.Port(); port != "" {
+			if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+				panic("rustdesk.webclient-share-api-server has an invalid port")
+			}
+		}
+		rowVal.Rustdesk.WebclientShareApiServer = strings.TrimRight(base.String(), "/")
+	} else {
+		rowVal.Rustdesk.WebclientShareApiServer = ""
+	}
+	if rowVal.App.BanThreshold > 0 && rowVal.App.CaptchaThreshold >= rowVal.App.BanThreshold {
+		panic(fmt.Errorf("app.captcha-threshold (%d) must be lower than app.ban-threshold (%d) when both are enabled",
+			rowVal.App.CaptchaThreshold, rowVal.App.BanThreshold))
 	}
 	rowVal.Rustdesk.LoadKeyFile()
 	rowVal.Admin.Init()

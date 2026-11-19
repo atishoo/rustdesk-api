@@ -1,4 +1,5 @@
-FROM rustdesk/rustdesk-server-s6:latest AS server
+ARG RUSTDESK_SERVER_IMAGE=ghcr.io/atishoo/rustdesk-server:ultrapro
+FROM ${RUSTDESK_SERVER_IMAGE} AS server
 
 FROM alpine
 
@@ -10,7 +11,6 @@ COPY ./${BUILDARCH}/release /app/
 COPY --from=server /init /init
 COPY --from=server /etc/s6-overlay /etc/s6-overlay
 COPY --from=server /package /package
-COPY --from=server /usr/bin/healthcheck.sh /usr/bin/healthcheck.sh
 COPY --from=server /usr/bin/hbbr /usr/bin/hbbr
 COPY --from=server /usr/bin/hbbs /usr/bin/hbbs
 COPY --from=server /usr/bin/rustdesk-utils /usr/bin/rustdesk-utils
@@ -21,18 +21,25 @@ RUN \
   echo -e "key-secret\nhbbs" > /etc/s6-overlay/s6-rc.d/api/dependencies && \
   echo "longrun" > /etc/s6-overlay/s6-rc.d/api/type && \
   echo "#!/command/with-contenv sh" > /etc/s6-overlay/s6-rc.d/api/run && \
+  echo 'export RUSTDESK_API_S6_LOCAL_CONTROL=1' >> /etc/s6-overlay/s6-rc.d/api/run && \
   echo "cd /app" >> /etc/s6-overlay/s6-rc.d/api/run && \
-  echo "./apimain" >> /etc/s6-overlay/s6-rc.d/api/run && \
+  echo "exec ./apimain" >> /etc/s6-overlay/s6-rc.d/api/run && \
   touch /etc/s6-overlay/s6-rc.d/user/contents.d/api && \
-  echo "/package/admin/s6/command/s6-svstat /run/s6-rc/servicedirs/api || exit 1" >> /usr/bin/healthcheck.sh && \
+  printf '%s\n' '#!/bin/sh' \
+    'for service in hbbs hbbr api; do' \
+    '  [ "$(/package/admin/s6/command/s6-svstat -o up "/run/s6-rc/servicedirs/$service")" = true ] || exit 1' \
+    'done' > /usr/bin/healthcheck.sh && \
+  chmod 755 /usr/bin/healthcheck.sh /etc/s6-overlay/s6-rc.d/api/run && \
   ln -s /run /var/run
 
-ENV RELAY=relay.example.com
 ENV ENCRYPTED_ONLY=0
+ENV ENABLE_TCP_REGISTER=Y
 
 VOLUME /data
 VOLUME /app/data
 
 EXPOSE 21114 21115 21116 21116/udp 21117 21118 21119
+
+HEALTHCHECK --interval=10s --timeout=5s CMD /usr/bin/healthcheck.sh
 
 ENTRYPOINT ["/init"]

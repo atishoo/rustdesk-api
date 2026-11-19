@@ -20,6 +20,7 @@ func Init(g *gin.Engine) {
 	}
 
 	adg := g.Group("/api/admin")
+	adg.OPTIONS("/*path", func(c *gin.Context) {})
 	LoginBind(adg)
 	adg.POST("/user/register", (&admin.User{}).Register)
 
@@ -56,20 +57,23 @@ func Init(g *gin.Engine) {
 
 func RustdeskCmdBind(adg *gin.RouterGroup) {
 	cont := &admin.Rustdesk{}
-	rg := adg.Group("/rustdesk")
+	rg := adg.Group("/rustdesk").Use(middleware.AdminPrivilege())
 	rg.POST("/sendCmd", cont.SendCmd)
+	rg.GET("/status", cont.Status)
 	rg.GET("/cmdList", cont.CmdList)
 	rg.POST("/cmdDelete", cont.CmdDelete)
 	rg.POST("/cmdCreate", cont.CmdCreate)
+	rg.POST("/cmdUpdate", cont.CmdUpdate)
 }
 func LoginBind(rg *gin.RouterGroup) {
 	cont := &admin.Login{}
-	rg.POST("/login", cont.Login)
-	rg.GET("/captcha", cont.Captcha)
-	rg.POST("/logout", cont.Logout)
-	rg.GET("/login-options", cont.LoginOptions)
+	limitLogin := middleware.Limiter()
+	rg.POST("/login", limitLogin, cont.Login)
+	rg.GET("/captcha", limitLogin, cont.Captcha)
+	rg.POST("/logout", middleware.BackendUserAuth(), cont.Logout)
+	rg.GET("/login-options", limitLogin, cont.LoginOptions)
 	rg.POST("/oidc/auth", cont.OidcAuth)
-	rg.GET("/oidc/auth-query", cont.OidcAuthQuery)
+	rg.POST("/oidc/auth-query", cont.OidcAuthQuery)
 }
 
 func UserBind(rg *gin.RouterGroup) {
@@ -89,6 +93,7 @@ func UserBind(rg *gin.RouterGroup) {
 		aRP.GET("/detail/:id", cont.Detail)
 		aRP.POST("/create", cont.Create)
 		aRP.POST("/update", cont.Update)
+		aRP.POST("/updateStatus", cont.UpdateStatus)
 		aRP.POST("/delete", cont.Delete)
 		aRP.POST("/changePwd", cont.UpdatePassword)
 	}

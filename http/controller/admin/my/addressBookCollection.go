@@ -98,16 +98,12 @@ func (abc *AddressBookCollection) Update(c *gin.Context) {
 		return
 	}
 	u := service.AllService.UserService.CurUser(c)
-	//if f.UserId != u.Id {
-	//	response.Fail(c, 101, response.TranslateMsg(c, "NoAccess"))
-	//	return
-	//}
 	ex := service.AllService.AddressBookService.CollectionInfoById(f.Id)
 	if ex.Id == 0 {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
-	if ex.UserId != u.Id {
+	if ex.UserId != u.Id || (f.UserId != 0 && f.UserId != ex.UserId) {
 		response.Fail(c, 101, response.TranslateMsg(c, "NoAccess"))
 		return
 	}

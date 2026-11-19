@@ -2,6 +2,8 @@ package model
 
 import (
 	"errors"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -19,14 +21,16 @@ const (
 	PKCEMethodPlain  string = "plain"
 )
 
-// Validate the oauth type
+func OauthProviderTypes() []string {
+	return []string{OauthTypeGithub, OauthTypeGoogle, OauthTypeOidc, OauthTypeLinuxdo}
+}
+
+// Validate the type of a configured external OAuth provider.
 func ValidateOauthType(oauthType string) error {
-	switch oauthType {
-	case OauthTypeGithub, OauthTypeGoogle, OauthTypeOidc, OauthTypeWebauth, OauthTypeLinuxdo:
+	if slices.Contains(OauthProviderTypes(), oauthType) {
 		return nil
-	default:
-		return errors.New("invalid Oauth type")
 	}
+	return errors.New("invalid Oauth type")
 }
 
 const (
@@ -57,6 +61,12 @@ func (oa *Oauth) FormatOauthInfo() error {
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(oa.ClientId) == "" || strings.TrimSpace(oa.ClientSecret) == "" {
+		return errors.New("OAuth client ID and secret are required")
+	}
+	if strings.EqualFold(strings.TrimSpace(oa.Op), OauthTypeWebauth) {
+		return errors.New("WebAuth is configured via app.web-sso")
+	}
 	switch oauthType {
 	case OauthTypeGithub:
 		oa.Op = OauthTypeGithub
@@ -74,7 +84,15 @@ func (oa *Oauth) FormatOauthInfo() error {
 	issuer := strings.TrimSpace(oa.Issuer)
 	// If the oauth type is google and the issuer is empty, set the issuer to the default value
 	if oauthType == OauthTypeGoogle && issuer == "" {
-		oa.Issuer = IssuerGoogle
+		issuer = IssuerGoogle
+	}
+	if oauthType == OauthTypeOidc || oauthType == OauthTypeGoogle {
+		issuerURL, err := url.Parse(issuer)
+		if err != nil || (issuerURL.Scheme != "http" && issuerURL.Scheme != "https") ||
+			issuerURL.Hostname() == "" || issuerURL.User != nil || strings.ContainsAny(issuer, "?#") {
+			return errors.New("OIDC issuer must be an absolute HTTP or HTTPS URL without user information, a query, or a fragment")
+		}
+		oa.Issuer = issuer
 	}
 	if oa.PkceEnable == nil {
 		oa.PkceEnable = new(bool)
@@ -82,6 +100,8 @@ func (oa *Oauth) FormatOauthInfo() error {
 	}
 	if oa.PkceMethod == "" {
 		oa.PkceMethod = PKCEMethodS256
+	} else if oa.PkceMethod != PKCEMethodS256 && oa.PkceMethod != PKCEMethodPlain {
+		return errors.New("PKCE method must be S256 or plain")
 	}
 	return nil
 }

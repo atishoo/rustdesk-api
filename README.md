@@ -82,7 +82,7 @@
 
 ### Web Admin:
 
-* 使用前后端分离，提供用户友好的管理界面，主要用来管理和展示。前端代码在[rustdesk-api-web](https://github.com/lejianwen/rustdesk-api-web)
+* 管理控制台在配套的 Web 仓库中构建。[rustdesk-web](https://github.com/atishoo/rustdesk-web)
 
 * 后台访问地址是`http://<your server>[:port]/_admin/`
 * 初次安装管理员为用户名为`admin`，密码将在控制台打印，可以通过[命令行](#CLI)更改密码
@@ -118,7 +118,7 @@
       * 可以执行自定义指令
 
  
-11. **LDAP 支持**, 当在API Server上设置了LDAP(已测试AD和LDAP),可以通过LDAP中的用户信息进行登录 https://github.com/lejianwen/rustdesk-api/issues/114 ,如果LDAP验证失败，返回本地用户
+11. **LDAP 支持**。在 API Server 配置 LDAP 后，可以用目录账号登录（已在 AD 和 OpenLDAP 上验证）。启用 `ldap.user.sync` 前，保留一个不受 LDAP 同步影响的启用本地管理员，并验证其可独立登录。同步会应用目录管理员组的权限撤回，包括仅剩一个管理员的情况。LDAP 凭据验证通过后，如果组权限查询或同步失败，本次登录会被拒绝。
 
 ### Web Client:
 
@@ -127,6 +127,9 @@
 3. 登录后，会自动同步ID服务器和KEY
 4. 登录后，会将地址簿自动保存到web client中，方便使用
 
+内置 `/webclient/` 通过页面同源访问登录和账号配置。反向代理部署时，在同一域名转发 `/webclient/`、`/webclient-config/` 和 `/api/`。
+
+分享链接默认在 Web Client 同源访问 `/api/shared-peer`。独立部署且未转发该路由时，设置 `rustdesk.webclient-share-api-server` 或 `RUSTDESK_API_RUSTDESK_WEBCLIENT_SHARE_API_SERVER` 为实际 API 基础地址，例如 `https://api.example.com/rustdesk`。独立 Web Client 还须提供或转发 `/webclient-config/index.js`，以加载该 API 的兑换配置。跨域部署需在 API 入口为该独立 Web Client 来源配置 `/api/shared-peer` 的 CORS。
 
 ### 自动化文档: 使用 Swag 生成 API 文档，方便开发者理解和使用 API。
 
@@ -155,6 +158,12 @@
 * 如果`gorm.type`是`sqlite`，则不需要配置mysql相关配置。
 * 语言如果不设置默认为`zh-CN`
 
+Vite 默认通过同源代理访问 API，使用密码登录无需配置来源白名单。本地控制台跨域调用 API，或使用 Vite 地址进行 WebAuth 和 OIDC 登录时，在本机 API 的 `app.admin-origins` 或 `RUSTDESK_API_APP_ADMIN_ORIGINS` 中显式添加实际开发地址，例如 `http://127.0.0.1:5174`。
+
+管理端 OAuth 请求须携带绝对 `redirect_url`，其来源须与请求来源一致，并已在 `app.admin-origins` 或 `rustdesk.api-server` 中配置。同源反向代理需保留原始 `Host`，将 `X-Forwarded-Proto` 设为公网协议，并在 `gin.trust-proxy` 或 `RUSTDESK_API_GIN_TRUST_PROXY` 中登记 API 的直接代理地址。
+
+匿名 Web Client 分享需要配置 `rustdesk.id-server`。使用公网域名、代理或外部 ID Server 时，请按实际目标的策略将 `rustdesk.must-login` 或 `RUSTDESK_API_RUSTDESK_MUST_LOGIN` 设为 `true` 或 `false`。`true` 或无法确认的策略均会阻止创建和兑换匿名分享。只有 `rustdesk.id-server` 为 `127.0.0.1` 或 `::1` 且端口与 `admin.id-server-port` 一致时，才能省略策略并查询本机实例。通过 `Dockerfile_full_s6` 构建的镜像在确认本机 hbbs 不支持查询命令后，才使用启动时的 `MUST_LOGIN`。
+
 ### 环境变量
 环境变量和配置文件`conf/config.yaml`中的配置一一对应，变量名前缀是`RUSTDESK_API`
 下面表格并未全部列出，可以参考`conf/config.yaml`中的配置。
@@ -164,19 +173,20 @@
 | TZ                                                     | 时区                                                                             | Asia/Shanghai                |
 | RUSTDESK_API_LANG                                      | 语言                                                                             | `en`,`zh-CN`                 |
 | RUSTDESK_API_APP_WEB_CLIENT                            | 是否启用web-client; 1:启用,0:不启用; 默认启用                                               | 1                            |
+| RUSTDESK_API_APP_ADMIN_ORIGINS                         | 可信管理控制台 Origin，多个用英文逗号分隔，默认为空 | `http://127.0.0.1:5174` |
 | RUSTDESK_API_APP_REGISTER                              | 是否开启注册; `true`, `false`  默认`false`                                             | `false`                      |
 | RUSTDESK_API_APP_SHOW_SWAGGER                          | 是否可见swagger文档;`1`显示，`0`不显示，默认`0`不显示                                            | `1`                          |
 | RUSTDESK_API_APP_TOKEN_EXPIRE                          | token有效时长                                                                      | `168h`                       |
 | RUSTDESK_API_APP_DISABLE_PWD_LOGIN                     | 是否禁用密码登录;  `true`, `false`  默认`false`                                          | `false`                      |
 | RUSTDESK_API_APP_REGISTER_STATUS                       | 注册用户默认状态; 1 启用，2 禁用, 默认 1                                                      | `1`                          |
-| RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | 验证码触发次数; -1 不启用， 0 一直启用， >0 登录错误次数后启用 ;默认 `3`                                  | `3`                          |
-| RUSTDESK_API_APP_BAN_THRESHOLD                         | 封禁IP触发次数; 0 不启用, >0 登录错误次数后封禁IP; 默认 `0`                                        | `0`                          |
+| RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | 验证码触发次数，-1 不启用，0 一直启用。正数表示失败次数阈值，同时启用封禁时必须小于封禁阈值 | `-1` |
+| RUSTDESK_API_APP_BAN_THRESHOLD                         | 同一 IP 在 10 分钟内登录失败达到阈值后，限制其密码登录及相关选项和验证码请求 30 分钟。已建立的会话与设备心跳可继续使用，0 表示关闭 | `10` |
 | -----ADMIN配置-----                                      | ----------                                                                     | ----------                   |
 | RUSTDESK_API_ADMIN_TITLE                               | 后台标题                                                                           | `RustDesk Api Admin`         |
 | RUSTDESK_API_ADMIN_HELLO                               | 后台欢迎语，可以使用`html`                                                               |                              |
 | RUSTDESK_API_ADMIN_HELLO_FILE                          | 后台欢迎语文件，如果内容多，使用文件更方便。<br>会覆盖`RUSTDESK_API_ADMIN_HELLO`                        | `./conf/admin/hello.html`    |
 | -----GIN配置-----                                        | ----------                                                                     | ----------                   |
-| RUSTDESK_API_GIN_TRUST_PROXY                           | 信任的代理IP列表，以`,`分割，默认信任所有                                                        | 192.168.1.2,192.168.1.3      |
+| RUSTDESK_API_GIN_TRUST_PROXY                           | 信任的代理 IP 列表，以 `,` 分隔，默认为空。反向代理部署时填入实际代理地址，登录保护才能按客户端 IP 分别计数 | 192.168.1.2,192.168.1.3 |
 | -----GORM配置-----                                       | ----------                                                                     | ---------------------------  |
 | RUSTDESK_API_GORM_TYPE                                 | 数据库类型sqlite或者mysql，默认sqlite                                                    | sqlite                       |
 | RUSTDESK_API_GORM_MAX_IDLE_CONNS                       | 数据库最大空闲连接数                                                                     | 10                           |
@@ -232,7 +242,7 @@
 
 1. 克隆仓库
    ```bash
-   git clone https://github.com/lejianwen/rustdesk-api.git
+   git clone https://github.com/atishoo/rustdesk-api.git
    cd rustdesk-api
    ```
 
@@ -244,16 +254,19 @@
     go install github.com/swaggo/swag/cmd/swag@latest
     ```
 
-3. 编译后台前端，前端代码在[rustdesk-api-web](https://github.com/lejianwen/rustdesk-api-web)中
+3. 用 Node.js 22 编译同级目录的配套控制台。[rustdesk-web](https://github.com/atishoo/rustdesk-web)
    ```bash
-   cd resources
-   mkdir -p admin
-   git clone https://github.com/lejianwen/rustdesk-api-web
-   cd rustdesk-api-web
-   npm install
-   npm run build
-   cp -ar dist/* ../admin/
+   (cd ../rustdesk-web && npm ci && npm run build)
+   mkdir -p resources/admin
+   cp -a ../rustdesk-web/dist/. resources/admin/
    ```
+   GitHub Actions 默认构建同一所有者的 `rustdesk-web/main`。可通过仓库变量 `WEBCLIENT_REPOSITORY` 和 `WEBCLIENT_REF` 指定配套仓库和版本。配套仓库为私有仓库时，在 API 仓库配置 `RUSTDESK_WEB_READ_TOKEN`，授予该 Web 仓库的内容读取权限。发布 API 前先发布对应的 Web 版本。
+
+   如需本地构建开发镜像，在 API 仓库根目录运行以下命令。
+   ```bash
+   docker build -f Dockerfile.dev --build-context rustdesk-web=../rustdesk-web .
+   ```
+   定制客户端可以在 GitHub Actions 仓库变量、Compose 环境或 `docker build --build-arg` 中设置 `VITE_NATIVE_CLIENT_SCHEME`，值为已注册的客户端协议名。
 4. 运行
     ```bash
     #直接运行
@@ -272,6 +285,10 @@
 
 6. 打开浏览器访问`http://<your server[:port]>/_admin/`，默认用户名密码为`admin`，请及时更改密码。
 
+
+#### 使用全量 S6 镜像
+
+发布工作流的 `full-s6` 镜像包含 API、控制台和配套的 UltraPro Server。先发布配套 Server 镜像，再构建 API。可用 Actions 仓库变量或 Docker 构建参数 `RUSTDESK_SERVER_IMAGE` 固定 Server 镜像的提交标签或摘要。若 GHCR 配套镜像为私有，在该包的 **Manage Actions access** 中为 API 仓库授予 **Read** 权限，供工作流拉取。
 
 #### 使用`lejianwen/server-s6`镜像运行
 

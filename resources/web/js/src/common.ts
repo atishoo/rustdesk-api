@@ -75,3 +75,48 @@ function getLang(): string {
     return "";
   }
 }
+
+export const PORT = 21116;
+const SCHEMA = location.protocol === "https:" ? "wss://" : "ws://";
+export const websocketScheme = /^wss?:\/\//i;
+export const mixedContentWebSocketError = new Error("HTTPS 页面需要使用 WSS 服务端");
+export const proxyIdPath = /\/ws\/id(\/?)$/;
+
+export function matchesRendezvous(uri: URL | string, server: unknown): boolean {
+  if (!uri || typeof server !== "string" || !server) return false;
+  try {
+    const actual = typeof uri === "string" ? new URL(getWebClientUri(uri, false)) : uri;
+    return actual.href === new URL(getWebClientUri(server, false)).href;
+  } catch {
+    return false;
+  }
+}
+
+export function getWebClientUri(server: string, isRelay: boolean, relayEndpoint = false): string {
+  const websocket = websocketScheme.test(server);
+  const ipv6 = !websocket && !server.startsWith("[") && server.indexOf(":") !== server.lastIndexOf(":");
+  let address: URL;
+  try {
+    address = new URL(websocket ? server : `rustdesk-id://${ipv6 ? `[${server}]` : server}`);
+  } catch {
+    throw new Error("服务端地址无效");
+  }
+  if (!address.hostname || address.username || address.password || address.port === "0" || /[?#\\\s\x00-\x1f\x7f-\x9f]/.test(server)) {
+    throw new Error("服务端地址无效");
+  }
+  if (websocket) {
+    const hostname = address.hostname.replace(/\.$/, "");
+    const loopback = hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]" || /^127(?:\.\d+){3}$/.test(hostname);
+    if (location.protocol === "https:" && address.protocol === "ws:" && !loopback) {
+      throw mixedContentWebSocketError;
+    }
+    if (!isRelay || relayEndpoint) return server;
+    if (!proxyIdPath.test(address.pathname)) throw new Error("缺少 Relay WebSocket 地址");
+    address.pathname = address.pathname.replace(proxyIdPath, "/ws/relay$1");
+    return address.href;
+  }
+  const basePort = Number(address.port || (isRelay ? PORT + 1 : PORT));
+  const port = basePort + (isRelay && !relayEndpoint && address.port ? 3 : 2);
+  if (address.pathname || !basePort || port > 65535) throw new Error("服务端地址无效");
+  return new URL(`${SCHEMA}${address.hostname}:${port}`).href;
+}

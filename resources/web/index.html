@@ -34,10 +34,10 @@
     <link rel="manifest" href="manifest.json">
     <script src="/webclient-config/index.js"></script>
     <script src="ogvjs-1.8.6/ogv.js"></script>
-    <script type="module" crossorigin src="js/dist/index.js"></script>
+    <script type="module" crossorigin src="js/dist/index.js?v=d16b2647"></script>
     <script>
     </script>
-    <link rel="modulepreload" href="js/dist/vendor.js">
+    <link rel="modulepreload" href="js/dist/vendor.js?v=dfb97bdf">
     <script src="yuv-canvas-1.2.6.js"></script>
 
     <style>
@@ -98,14 +98,22 @@
      application. For more information, see:
      https://developers.google.com/web/fundamentals/primers/service-workers -->
 <script>
-    var serviceWorkerVersion = '1200232272';
+    var serviceWorkerVersion = '3513460295';
     var scriptLoaded = false;
+    var shareLaunch = window.location.hash.startsWith('#/?')
+        && new URLSearchParams(window.location.hash.slice(3)).has('share_token');
 
-    function loadMainDartJs() {
+    async function loadMainDartJs() {
         if (scriptLoaded) {
             return;
         }
         scriptLoaded = true;
+        if (shareLaunch && !await window.rustdeskSharedTargetReady) {
+            const loading = document.querySelector('.loading');
+            loading.textContent = '分享链接不可用或已过期，请刷新重试或联系分享者重新生成。';
+            loading.setAttribute('role', 'alert');
+            return;
+        }
         var scriptTag = document.createElement('script');
         scriptTag.src = 'main.dart.js';
         scriptTag.type = 'application/javascript';
@@ -158,6 +166,8 @@
                 }
             }, 4000);
         });
+    } else if (shareLaunch) {
+        window.addEventListener('load', loadMainDartJs, { once: true });
     } else {
         // Service workers not supported. Just drop the <script> tag.
         loadMainDartJs();

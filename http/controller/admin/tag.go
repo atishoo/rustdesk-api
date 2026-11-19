@@ -1,16 +1,24 @@
 package admin
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"gorm.io/gorm"
 	"strconv"
 )
 
 type Tag struct {
+}
+
+func validTagOwner(tag *model.Tag) bool {
+	services := service.AllService
+	return tag.UserId != 0 && services.UserService.InfoById(tag.UserId).Id != 0 &&
+		(tag.CollectionId == 0 || services.AddressBookService.CheckCollectionOwner(tag.UserId, tag.CollectionId))
 }
 
 // Detail 标签
@@ -64,11 +72,15 @@ func (ct *Tag) Create(c *gin.Context) {
 		return
 	}
 	t := f.ToTag()
-	if t.UserId == 0 {
+	if !validTagOwner(t) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
 	err := service.AllService.TagService.Create(t)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -142,7 +154,19 @@ func (ct *Tag) Update(c *gin.Context) {
 		return
 	}
 	t := f.ToTag()
-	err := service.AllService.TagService.Update(t)
+	if !validTagOwner(t) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	err := service.AllService.TagService.Update(ex, t)
+	if errors.Is(err, service.ErrReferencedTagMove) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

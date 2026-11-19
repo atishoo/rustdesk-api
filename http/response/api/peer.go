@@ -47,7 +47,7 @@ type PeerPayloadInfo struct {
 }
 
 func (gpp *GroupPeerPayload) FromAddressBook(a *model.AddressBook, username string) {
-	gpp.Id = a.Id
+	gpp.Id = string(a.Id)
 	os := a.Platform
 	if a.Platform == "Mac OS" {
 		os = "MacOS"
@@ -61,7 +61,7 @@ func (gpp *GroupPeerPayload) FromAddressBook(a *model.AddressBook, username stri
 }
 
 func (gpp *GroupPeerPayload) FromPeer(p *model.Peer, username string, dGroupName string) {
-	gpp.Id = p.Id
+	gpp.Id = string(p.Id)
 	gpp.Info = &PeerPayloadInfo{
 		DeviceName: p.Hostname,
 		Os:         p.Os,

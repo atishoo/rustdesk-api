@@ -13,18 +13,37 @@ import (
 
 	// "golang.org/x/oauth2/google"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	// "io"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 type OauthService struct {
 }
+
+var (
+	ErrLastLoginMethod              = errors.New("cannot remove the last login method")
+	ErrLdapUnbindPasswordRequired   = errors.New("LDAP password is required to unbind")
+	ErrLdapUnbindVerificationFailed = errors.New("unable to verify LDAP login for unbinding")
+	ErrLdapUnbindRateLimited        = errors.New("LDAP verification attempts temporarily limited")
+	ErrOauthIdentityBound           = errors.New("OAuth provider identity cannot be changed while accounts are linked")
+	ErrOauthIdentityChanged         = errors.New("OAuth provider identity has changed since authorization")
+)
+
+var ldapUnbindLimiter = utils.NewLoginLimiter(utils.SecurityPolicy{
+	CaptchaThreshold: -1,
+	BanThreshold:     5,
+	AttemptsWindow:   5 * time.Minute,
+	BanDuration:      5 * time.Minute,
+})
 
 // Define a struct to parse the .well-known/openid-configuration response
 type OidcEndpoint struct {
@@ -35,20 +54,51 @@ type OidcEndpoint struct {
 }
 
 type OauthCacheItem struct {
-	UserId     uint   `json:"user_id"`
-	Id         string `json:"id"` //rustdesk的设备ID
-	Op         string `json:"op"`
-	Action     string `json:"action"`
-	Uuid       string `json:"uuid"`
-	DeviceName string `json:"device_name"`
-	DeviceOs   string `json:"device_os"`
-	DeviceType string `json:"device_type"`
-	OpenId     string `json:"open_id"`
-	Username   string `json:"username"`
-	Name       string `json:"name"`
-	Email      string `json:"email"`
-	Verifier   string `json:"verifier"` // used for oauth pkce
-	Nonce      string `json:"nonce"`
+	UserId           uint                  `json:"user_id"`
+	Id               string                `json:"id"` //rustdesk的设备ID
+	Op               string                `json:"op"`
+	Action           string                `json:"action"`
+	Uuid             string                `json:"uuid"`
+	DeviceName       string                `json:"device_name"`
+	DeviceOs         string                `json:"device_os"`
+	DeviceType       string                `json:"device_type"`
+	OpenId           string                `json:"open_id"`
+	Username         string                `json:"username"`
+	Name             string                `json:"name"`
+	Email            string                `json:"email"`
+	Verifier         string                `json:"verifier"` // used for oauth pkce
+	Nonce            string                `json:"nonce"`
+	RedirectURL      string                `json:"redirect_url"`
+	Ticket           string                `json:"-"`
+	Binding          bool                  `json:"-"`
+	Redeeming        bool                  `json:"-"`
+	ProviderIdentity OauthProviderIdentity `json:"-"`
+}
+
+type OauthProviderIdentity struct {
+	oauthType, issuer, clientID string
+}
+
+func oauthProviderIdentity(config *model.Oauth) OauthProviderIdentity {
+	identity := OauthProviderIdentity{oauthType: config.OauthType}
+	if config.OauthType == model.OauthTypeOidc || config.OauthType == model.OauthTypeGoogle {
+		identity.issuer = config.Issuer
+		identity.clientID = config.ClientId
+	}
+	return identity
+}
+
+// lockVerifiedOauthProvider serializes binding writes with provider identity updates.
+func lockVerifiedOauthProvider(tx *gorm.DB, op string, identity OauthProviderIdentity) (*model.Oauth, error) {
+	var config model.Oauth
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("op = ?", op).First(&config).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && oauthProviderIdentity(&config) != identity) {
+		return nil, ErrOauthIdentityChanged
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &config, nil
 }
 
 func (oci *OauthCacheItem) ToOauthUser() *model.OauthUser {
@@ -82,6 +132,28 @@ func (os *OauthService) GetOauthCache(key string) *OauthCacheItem {
 	return v.(*OauthCacheItem)
 }
 
+func (os *OauthService) ConsumeOauthCache(key string, claim *OauthCacheItem) {
+	OauthCache.CompareAndDelete(key, claim)
+}
+
+func (os *OauthService) ReplaceOauthCache(key string, current, next *OauthCacheItem) bool {
+	return OauthCache.CompareAndSwap(key, current, next)
+}
+
+func (os *OauthService) ConfirmWebauth(key string, userId uint) *OauthCacheItem {
+	for {
+		v := os.GetOauthCache(key)
+		if v == nil || v.Action != OauthActionTypeLogin || v.Op != model.OauthTypeWebauth || v.UserId != 0 || (v.DeviceType == model.LoginLogClientWebAdmin && v.Ticket == "") {
+			return nil
+		}
+		confirmed := *v
+		confirmed.UserId = userId
+		if os.ReplaceOauthCache(key, v, &confirmed) {
+			return &confirmed
+		}
+	}
+}
+
 func (os *OauthService) SetOauthCache(key string, item *OauthCacheItem, expire uint) {
 	OauthCache.Store(key, item)
 	if expire > 0 {
@@ -99,7 +171,10 @@ func (os *OauthService) BeginAuth(op string) (error error, state, verifier, nonc
 	state = utils.RandomString(10) + strconv.FormatInt(time.Now().Unix(), 10)
 	verifier = ""
 	nonce = ""
-	if op == model.OauthTypeWebauth {
+	if strings.EqualFold(op, model.OauthTypeWebauth) {
+		if op != model.OauthTypeWebauth || !Config.App.WebSso {
+			return errors.New("ConfigNotFound"), "", "", "", ""
+		}
 		url = Config.Rustdesk.ApiServer + "/_admin/#/oauth/" + state
 		//url = "http://localhost:8888/_admin/#/oauth/" + code
 		return nil, state, verifier, nonce, url
@@ -333,11 +408,11 @@ func (os *OauthService) oidcCallback(oauthConfig *oauth2.Config, provider *oidc.
 }
 
 // Callback: Get user information by code and op(Oauth provider)
-func (os *OauthService) Callback(code, verifier, op, nonce string) (err error, oauthUser *model.OauthUser) {
+func (os *OauthService) Callback(code, verifier, op, nonce string) (err error, oauthUser *model.OauthUser, identity OauthProviderIdentity) {
 	err, oauthInfo, oauthConfig, provider := os.GetOauthConfig(op)
 	// oauthType is already validated in GetOauthConfig
 	if err != nil {
-		return err, nil
+		return err, nil, identity
 	}
 	oauthType := oauthInfo.OauthType
 	switch oauthType {
@@ -348,9 +423,9 @@ func (os *OauthService) Callback(code, verifier, op, nonce string) (err error, o
 	case model.OauthTypeOidc, model.OauthTypeGoogle:
 		err, oauthUser = os.oidcCallback(oauthConfig, provider, code, verifier, nonce)
 	default:
-		return errors.New("unsupported OAuth type"), nil
+		return errors.New("unsupported OAuth type"), nil, identity
 	}
-	return err, oauthUser
+	return err, oauthUser, oauthProviderIdentity(oauthInfo)
 }
 
 func (os *OauthService) UserThirdInfo(op string, openId string) *model.UserThird {
@@ -360,24 +435,136 @@ func (os *OauthService) UserThirdInfo(op string, openId string) *model.UserThird
 }
 
 // BindOauthUser: Bind third party account
-func (os *OauthService) BindOauthUser(userId uint, oauthUser *model.OauthUser, op string) error {
-	utr := &model.UserThird{}
-	err, oauthType := os.GetTypeByOp(op)
-	if err != nil {
-		return err
-	}
-	utr.FromOauthUser(userId, oauthUser, oauthType, op)
-	return DB.Create(utr).Error
+func (os *OauthService) BindOauthUser(userId uint, oauthUser *model.OauthUser, op string, identity OauthProviderIdentity) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var user model.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&user, userId).Error; err != nil {
+			return err
+		}
+		config, err := lockVerifiedOauthProvider(tx, op, identity)
+		if err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&model.UserThird{}).Where("op = ? AND open_id = ?", op, oauthUser.OpenId).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New("OauthHasBindOtherUser")
+		}
+		utr := &model.UserThird{}
+		utr.FromOauthUser(userId, oauthUser, config.OauthType, op)
+		return tx.Create(utr).Error
+	})
 }
 
 // UnBindOauthUser: Unbind third party account
-func (os *OauthService) UnBindOauthUser(userId uint, op string) error {
-	return os.UnBindThird(op, userId)
-}
+func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, loginBanned bool) error {
+	var username, directoryUsername string
+	var directoryValues *model.User
+	var useLocalPassword bool
+	unbind := func(tx *gorm.DB) error {
+		var user model.User
+		// Serialize unbinding even when two requests remove different providers.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "username", "password", "status").First(&user, userId).Error; err != nil {
+			return err
+		}
+		result := tx.Where("user_id = ? AND op = ?", userId, op).Delete(&model.UserThird{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if !Config.App.DisablePwdLogin && user.Username != "" && user.Password != "" && AllService.UserService.CheckUserEnable(&user) {
+			if useLocalPassword && user.Username == username {
+				valid, _, err := utils.VerifyPassword(user.Password, loginPassword)
+				if err == nil && valid {
+					return nil
+				}
+			} else if !Config.Ldap.Enable || !Config.Ldap.User.Sync {
+				emptyPassword, _, err := utils.VerifyPassword(user.Password, "")
+				if err == nil && !emptyPassword {
+					return nil
+				}
+			}
+		}
+		// WebAuth requires an existing session, so it cannot replace a login method.
+		providers := configuredOauthProviders(tx).Select("op")
+		var remaining int64
+		if err := tx.Model(&model.UserThird{}).
+			Where("user_id = ? AND open_id <> '' AND op IN (?)", userId, providers).Count(&remaining).Error; err != nil {
+			return err
+		}
+		if remaining > 0 {
+			return nil
+		}
+		if !Config.App.DisablePwdLogin && Config.Ldap.Enable && directoryUsername != "" && user.Username == username {
+			// LDAP login maps the returned directory username to the local account.
+			var mapped model.User
+			err := tx.Select("id", "status").Where("username = ?", directoryUsername).First(&mapped).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if mapped.Id == userId {
+				if directoryValues != nil {
+					// Verify the login write without changing the account's profile or role.
+					if err := tx.Exec("SAVEPOINT ldap_sync_check").Error; err != nil {
+						return ErrLdapUnbindVerificationFailed
+					}
+					if err := syncLdapUser(tx, &mapped, directoryValues); err != nil {
+						return ErrLdapUnbindVerificationFailed
+					}
+					if err := tx.Exec("ROLLBACK TO SAVEPOINT ldap_sync_check").Error; err != nil {
+						return ErrLdapUnbindVerificationFailed
+					}
+				}
+				if !AllService.UserService.CheckUserEnable(&mapped) {
+					return ErrLdapUnbindVerificationFailed
+				}
+				return nil
+			}
+		}
+		username = user.Username
+		return ErrLastLoginMethod
+	}
+	err := DB.Transaction(unbind)
+	if !errors.Is(err, ErrLastLoginMethod) || username == "" || Config.App.DisablePwdLogin || !Config.Ldap.Enable {
+		return err
+	}
+	if loginPassword == "" {
+		return ErrLdapUnbindPasswordRequired
+	}
+	if loginBanned || !ldapUnbindLimiter.ReserveAttempt(strconv.FormatUint(uint64(userId), 10)) {
+		return ErrLdapUnbindRateLimited
+	}
+	// Query the directory after rollback so a slow directory cannot hold database locks.
+	directory := &LdapService{deadline: time.Now().Add(5 * time.Second)}
+	ldapUser, ldapErr := directory.loginUser(username, loginPassword)
+	if ldapErr != nil {
+		if !time.Now().Before(directory.deadline) {
+			return ErrLdapUnbindVerificationFailed
+		}
+		// Ordinary login falls back to the local password only before LDAP mapping.
+		useLocalPassword = true
+	} else {
+		if ldapUser.Username == "" || AllService.UserService.InfoByUsername(ldapUser.Username).Id != userId {
+			return ErrLdapUnbindVerificationFailed
+		}
+		if Config.Ldap.User.Sync {
+			directoryValues, err = directory.localUserValues(&Config.Ldap, ldapUser)
+			if err != nil {
+				return ErrLdapUnbindVerificationFailed
+			}
+		}
+		directoryUsername = ldapUser.Username
+	}
 
-// UnBindThird: Unbind third party account
-func (os *OauthService) UnBindThird(op string, userId uint) error {
-	return DB.Where("user_id = ? and op = ?", userId, op).Delete(&model.UserThird{}).Error
+	err = DB.Transaction(unbind)
+	if errors.Is(err, ErrLastLoginMethod) {
+		return ErrLdapUnbindVerificationFailed
+	}
+	return err
 }
 
 // DeleteUserByUserId: When user is deleted, delete all third party bindings
@@ -407,11 +594,16 @@ func (os *OauthService) getScopesByOp(op string) []string {
 
 // Helper function to construct scopes
 func (os *OauthService) constructScopes(scopes string) []string {
-	scopes = strings.TrimSpace(scopes)
-	if scopes == "" {
-		scopes = model.OIDC_DEFAULT_SCOPES
+	values := strings.FieldsFunc(scopes, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+	if len(values) == 0 {
+		return strings.Split(model.OIDC_DEFAULT_SCOPES, ",")
 	}
-	return strings.Split(scopes, ",")
+	if !slices.Contains(values, oidc.ScopeOpenID) {
+		return append([]string{oidc.ScopeOpenID}, values...)
+	}
+	return values
 }
 
 func (os *OauthService) List(page, pageSize uint, where func(tx *gorm.DB)) (res *model.OauthList) {
@@ -426,15 +618,6 @@ func (os *OauthService) List(page, pageSize uint, where func(tx *gorm.DB)) (res 
 	tx.Scopes(Paginate(page, pageSize))
 	tx.Find(&res.Oauths)
 	return
-}
-
-// GetTypeByOp 根据op获取OauthType
-func (os *OauthService) GetTypeByOp(op string) (error, string) {
-	oauthInfo := &model.Oauth{}
-	if DB.Where("op = ?", op).First(oauthInfo).Error != nil {
-		return fmt.Errorf("OAuth provider with op '%s' not found", op), ""
-	}
-	return nil, oauthInfo.OauthType
 }
 
 // ValidateOauthProvider 验证Oauth提供者是否正确
@@ -465,22 +648,75 @@ func (os *OauthService) Create(oauthInfo *model.Oauth) error {
 	return res
 }
 func (os *OauthService) Delete(oauthInfo *model.Oauth) error {
-	return DB.Delete(oauthInfo).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var current model.Oauth
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("op").First(&current, oauthInfo.Id).Error; err != nil {
+			return err
+		}
+		result := tx.Where("NOT EXISTS (?)", oauthProviderBindings(tx, current.Op)).Delete(oauthInfo)
+		if result.Error == nil && result.RowsAffected == 0 {
+			return ErrOauthIdentityBound
+		}
+		return result.Error
+	})
 }
 
 // Update 更新
-func (os *OauthService) Update(oauthInfo *model.Oauth) error {
-	err := oauthInfo.FormatOauthInfo()
-	if err != nil {
-		return err
-	}
-	return DB.Model(oauthInfo).Updates(oauthInfo).Error
+func (os *OauthService) Update(oauthInfo *model.Oauth, updateScopes bool) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var current model.Oauth
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("op", "oauth_type", "issuer", "client_id").First(&current, oauthInfo.Id).Error; err != nil {
+			return err
+		}
+		if oauthInfo.Op == "" {
+			oauthInfo.Op = current.Op
+		}
+		suppliedOp := oauthInfo.Op
+		if err := oauthInfo.FormatOauthInfo(); err != nil {
+			return err
+		}
+		if suppliedOp != current.Op || oauthInfo.Op != current.Op {
+			return errors.New("OAuth provider identifier cannot be changed")
+		}
+		fields := []string{"oauth_type", "client_id", "client_secret", "pkce_enable", "pkce_method"}
+		if oauthInfo.Issuer != "" {
+			fields = append(fields, "issuer")
+		}
+		if oauthInfo.AutoRegister != nil {
+			fields = append(fields, "auto_register")
+		}
+		if updateScopes {
+			fields = append(fields, "scopes")
+		}
+		identityChanged := oauthProviderIdentity(oauthInfo) != oauthProviderIdentity(&current)
+		update := tx.Model(oauthInfo).Select(fields)
+		if identityChanged {
+			update = update.Where("NOT EXISTS (?)", oauthProviderBindings(tx, current.Op))
+		}
+		result := update.Updates(oauthInfo)
+		if result.Error == nil && identityChanged && result.RowsAffected == 0 {
+			return ErrOauthIdentityBound
+		}
+		return result.Error
+	})
 }
 
-// GetOauthProviders 获取所有的provider
+func oauthProviderBindings(db *gorm.DB, op string) *gorm.DB {
+	return db.Model(&model.UserThird{}).Select("1").Where("op = ?", op)
+}
+
+func configuredOauthProviders(db *gorm.DB) *gorm.DB {
+	return db.Model(&model.Oauth{}).
+		Where("op <> '' AND LOWER(op) <> ? AND oauth_type IN ? AND client_id <> '' AND client_secret <> ''", model.OauthTypeWebauth, model.OauthProviderTypes()).
+		Where("(oauth_type NOT IN ? OR issuer <> '')", []string{model.OauthTypeGoogle, model.OauthTypeOidc})
+}
+
+// GetOauthProviders 返回可用于登录的外部提供商。
 func (os *OauthService) GetOauthProviders() []string {
 	var res []string
-	DB.Model(&model.Oauth{}).Pluck("op", &res)
+	configuredOauthProviders(DB).Pluck("op", &res)
 	return res
 }
 

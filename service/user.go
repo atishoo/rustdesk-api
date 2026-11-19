@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-sql-driver/mysql"
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type UserService struct {
@@ -52,6 +54,9 @@ func (us *UserService) InfoByUsernamePassword(username, password string) *model.
 			return u
 		}
 		Logger.Errorf("LDAP authentication failed, %v", err)
+		if errors.Is(err, ErrLdapToLocalUserFailed) {
+			return &model.User{}
+		}
 		Logger.Warn("Fallback to local database")
 	}
 	u := &model.User{}
@@ -74,11 +79,16 @@ func (us *UserService) InfoByUsernamePassword(username, password string) *model.
 func (us *UserService) InfoByAccessToken(token string) (*model.User, *model.UserToken) {
 	u := &model.User{}
 	ut := &model.UserToken{}
-	DB.Where("token = ?", token).First(ut)
-	if ut.Id == 0 {
-		return u, ut
+	var userID uint
+	if len(Jwt.Key) > 0 {
+		verifiedID, err := us.VerifyJWT(token)
+		if err != nil || verifiedID == 0 {
+			return u, ut
+		}
+		userID = verifiedID
 	}
-	if ut.ExpiredAt < time.Now().Unix() {
+	DB.Where("token = ?", token).First(ut)
+	if ut.Id == 0 || ut.ExpiredAt < time.Now().Unix() || (userID != 0 && userID != ut.UserId) {
 		return u, ut
 	}
 	DB.Where("id = ?", ut.UserId).First(u)
@@ -86,30 +96,59 @@ func (us *UserService) InfoByAccessToken(token string) (*model.User, *model.User
 }
 
 // GenerateToken 生成token
-func (us *UserService) GenerateToken(u *model.User) string {
+func (us *UserService) GenerateToken(u *model.User) (string, int64) {
+	expiresAt := us.UserTokenExpireTimestamp()
 	if len(Jwt.Key) > 0 {
-		return Jwt.GenerateToken(u.Id)
+		return Jwt.GenerateTokenBefore(u.Id, time.Unix(expiresAt, 0))
 	}
-	return utils.Md5(u.Username + time.Now().String())
+	return utils.Md5(u.Username + time.Now().String()), expiresAt
 }
 
 // Login 登录
-func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserToken {
-	token := us.GenerateToken(u)
-	ut := &model.UserToken{
-		UserId:     u.Id,
-		Token:      token,
-		DeviceUuid: llog.Uuid,
-		DeviceId:   llog.DeviceId,
-		ExpiredAt:  us.UserTokenExpireTimestamp(),
+func (us *UserService) Login(u *model.User, llog *model.LoginLog, deviceSession bool) (*model.UserToken, error) {
+	token, expiresAt := us.GenerateToken(u)
+	if token == "" || expiresAt <= time.Now().Unix() {
+		return nil, errors.New("could not generate a usable session token")
 	}
-	DB.Create(ut)
-	llog.UserTokenId = ut.UserId
-	DB.Create(llog)
-	if llog.Uuid != "" {
-		AllService.PeerService.UuidBindUserId(llog.DeviceId, llog.Uuid, u.Id)
+	session := model.UserToken{
+		UserId:    u.Id,
+		Token:     token,
+		ExpiredAt: expiresAt,
 	}
-	return ut
+	details := *llog
+	if deviceSession {
+		session.DeviceId = details.DeviceId
+		session.DeviceUuid = details.Uuid
+		if details.Client == model.LoginLogClientWebAdmin {
+			details.Client = model.LoginLogClientApp
+		}
+	}
+	for attempt := 1; ; attempt++ {
+		ut, loginLog := session, details
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			// Match the device-first lock order used by reporting and logout.
+			if ut.DeviceId != "" || ut.DeviceUuid != "" {
+				if err := AllService.PeerService.bindDeviceUser(tx, ut.DeviceId, ut.DeviceUuid, u.Id); err != nil {
+					return err
+				}
+			}
+			if err := tx.Create(&ut).Error; err != nil {
+				return err
+			}
+			loginLog.UserTokenId = ut.Id
+			return tx.Create(&loginLog).Error
+		})
+		if err == nil {
+			*llog = loginLog
+			return &ut, nil
+		}
+		// MySQL can roll back one of two concurrent claims for a new device ID.
+		var deadlock *mysql.MySQLError
+		if attempt == 3 || session.DeviceId == "" || session.DeviceUuid == "" ||
+			!errors.As(err, &deadlock) || deadlock.Number != 1213 {
+			return nil, err
+		}
+	}
 }
 
 // CurUser 获取当前用户
@@ -183,62 +222,95 @@ func (us *UserService) Create(u *model.User) error {
 	return res
 }
 
-// GetUuidByToken 根据token和user取uuid
-func (us *UserService) GetUuidByToken(u *model.User, token string) string {
-	ut := &model.UserToken{}
-	err := DB.Where("user_id = ? and token = ?", u.Id, token).First(ut).Error
-	if err != nil {
-		return ""
-	}
-	return ut.DeviceUuid
-}
-
-// Logout 退出登录 -> 删除token, 解绑uuid
+// Logout 撤销当前令牌，并恢复相同设备上最新有效会话的归属。
 func (us *UserService) Logout(u *model.User, token string) error {
-	uuid := us.GetUuidByToken(u, token)
-	err := DB.Where("user_id = ? and token = ?", u.Id, token).Delete(&model.UserToken{}).Error
-	if err != nil {
+	var session model.UserToken
+	if err := DB.Where("user_id = ? AND token = ?", u.Id, token).First(&session).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
 		return err
 	}
-	if uuid != "" {
-		AllService.PeerService.UuidUnbindUserId(uuid, u.Id)
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if session.DeviceId == "" && session.DeviceUuid == "" {
+			return tx.Delete(&session).Error
+		}
+		if err := lockDeviceIdentity(tx, session.DeviceId, session.DeviceUuid); err != nil {
+			return err
+		}
+		device := tx.Model(&model.Peer{}).
+			Where("id = ? AND uuid = ?", session.DeviceId, session.DeviceUuid)
+		// 先锁定设备行，使同一设备的并发登出依次检查剩余会话。
+		if err := device.Session(&gorm.Session{}).UpdateColumn("user_id", gorm.Expr("user_id")).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&session).Error; err != nil {
+			return err
+		}
+		sessions := tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
+		userID, err := us.latestDeviceSessionUser(sessions, session.DeviceId, session.DeviceUuid, 0)
+		if err != nil || userID == u.Id {
+			return err
+		}
+		return device.Where("user_id = ?", u.Id).Update("user_id", userID).Error
+	})
+}
+
+// latestDeviceSessionUser finds the newest usable session for an exact pair.
+// Pass zero for userID to consider sessions from every enabled account.
+func (us *UserService) latestDeviceSessionUser(tx *gorm.DB, deviceID, uuid model.DeviceIdentity, userID uint) (uint, error) {
+	query := tx.Model(&model.UserToken{}).
+		Where("device_id = ? AND device_uuid = ? AND expired_at >= ?", deviceID, uuid, time.Now().Unix()).
+		Order("id DESC")
+	if userID == 0 {
+		query = query.Where("EXISTS (SELECT 1 FROM users WHERE users.id = user_tokens.user_id AND users.status = ?)", model.COMMON_STATUS_ENABLE)
+	} else {
+		query = query.Where("user_id = ?", userID)
 	}
-	return nil
+	useJWT := len(Jwt.Key) > 0
+	if useJWT {
+		query = query.Select("user_id", "token")
+	} else {
+		query = query.Select("user_id").Limit(1)
+	}
+	var sessions []model.UserToken
+	if err := query.Find(&sessions).Error; err != nil {
+		return 0, err
+	}
+	for _, session := range sessions {
+		if !useJWT {
+			return session.UserId, nil
+		}
+		if uid, err := us.VerifyJWT(session.Token); err == nil && uid == session.UserId {
+			return session.UserId, nil
+		}
+	}
+	return 0, nil
 }
 
 // Delete 删除用户和oauth信息
 func (us *UserService) Delete(u *model.User) error {
-	userCount := us.getAdminUserCount()
-	if userCount <= 1 && us.IsAdmin(u) {
-		return errors.New("The last admin user cannot be deleted")
-	}
-	tx := DB.Begin()
-	// 删除用户
-	if err := tx.Delete(u).Error; err != nil {
-		tx.Rollback()
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		last, err := lastEnabledAdmin(tx, u.Id)
+		if err != nil {
+			return err
+		}
+		if last {
+			return errors.New("The last admin user cannot be deleted")
+		}
+		if err := tx.Delete(u).Error; err != nil {
+			return err
+		}
+		for _, related := range []any{&model.UserThird{}, &model.AddressBook{}, &model.AddressBookCollection{}, &model.AddressBookCollectionRule{}} {
+			if err := tx.Where("user_id = ?", u.Id).Delete(related).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	// 删除关联的 OAuth 信息
-	if err := tx.Where("user_id = ?", u.Id).Delete(&model.UserThird{}).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	//  删除关联的ab
-	if err := tx.Where("user_id = ?", u.Id).Delete(&model.AddressBook{}).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	//  删除关联的abc
-	if err := tx.Where("user_id = ?", u.Id).Delete(&model.AddressBookCollection{}).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	//  删除关联的abcr
-	if err := tx.Where("user_id = ?", u.Id).Delete(&model.AddressBookCollectionRule{}).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	tx.Commit()
 	// 删除关联的peer
 	if err := AllService.PeerService.EraseUserId(u.Id); err != nil {
 		Logger.Warn("User deleted successfully, but failed to unlink peer.")
@@ -248,32 +320,36 @@ func (us *UserService) Delete(u *model.User) error {
 }
 
 // Update 更新
-func (us *UserService) Update(u *model.User) error {
-	currentUser := us.InfoById(u.Id)
-	// 如果当前用户是管理员并且 IsAdmin 不为空，进行检查
-	if us.IsAdmin(currentUser) {
-		adminCount := us.getAdminUserCount()
-		// 如果这是唯一的管理员，确保不能禁用或取消管理员权限
-		if adminCount <= 1 && (!us.IsAdmin(u) || u.Status == model.COMMON_STATUS_DISABLED) {
+func (us *UserService) Update(u *model.User, fields ...string) error {
+	update := func(tx *gorm.DB) error {
+		var current model.User
+		if err := tx.Select("id").Where("id = ?", u.Id).First(&current).Error; err != nil {
+			return err
+		}
+		target := tx.Model(u)
+		if len(fields) != 0 {
+			target = target.Select(fields)
+		}
+		return target.Updates(u).Error
+	}
+	if (u.IsAdmin == nil || *u.IsAdmin) && u.Status != model.COMMON_STATUS_DISABLED {
+		return update(DB)
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		last, err := lastEnabledAdmin(tx, u.Id)
+		if err != nil {
+			return err
+		}
+		if last {
 			return errors.New("The last admin user cannot be disabled or demoted")
 		}
-	}
-	return DB.Model(u).Updates(u).Error
+		return update(tx)
+	})
 }
 
 // FlushToken 清空token
 func (us *UserService) FlushToken(u *model.User) error {
 	return DB.Where("user_id = ?", u.Id).Delete(&model.UserToken{}).Error
-}
-
-// FlushTokenByUuid 清空token
-func (us *UserService) FlushTokenByUuid(uuid string) error {
-	return DB.Where("device_uuid = ?", uuid).Delete(&model.UserToken{}).Error
-}
-
-// FlushTokenByUuids 清空token
-func (us *UserService) FlushTokenByUuids(uuids []string) error {
-	return DB.Where("device_uuid in (?)", uuids).Delete(&model.UserToken{}).Error
 }
 
 // UpdatePassword 更新密码
@@ -305,29 +381,42 @@ func (us *UserService) RouteNames(u *model.User) []string {
 }
 
 // InfoByOauthId 根据oauth的name和openId取用户信息
-func (us *UserService) InfoByOauthId(op string, openId string) *model.User {
-	ut := AllService.OauthService.UserThirdInfo(op, openId)
-	if ut.Id == 0 {
-		return nil
+func (us *UserService) InfoByOauthId(op, openId string, identity OauthProviderIdentity) (user *model.User, autoRegister bool, err error) {
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		config, err := lockVerifiedOauthProvider(tx, op, identity)
+		if err != nil {
+			return err
+		}
+		autoRegister = config.AutoRegister != nil && *config.AutoRegister
+		user, err = userByOauthBinding(tx, op, openId)
+		return err
+	})
+	return
+}
+
+func userByOauthBinding(tx *gorm.DB, op, openId string) (*model.User, error) {
+	var binding model.UserThird
+	err := tx.Where("op = ? AND open_id = ?", op, openId).First(&binding).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	u := us.InfoById(ut.UserId)
-	if u.Id == 0 {
-		return nil
+	if err != nil {
+		return nil, err
 	}
-	return u
+	var user model.User
+	if err := tx.First(&user, binding.UserId).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 // RegisterByOauth 注册
-func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (error, *model.User) {
+func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string, identity OauthProviderIdentity) (error, *model.User) {
 	Lock.Lock("registerByOauth")
 	defer Lock.UnLock("registerByOauth")
-	ut := AllService.OauthService.UserThirdInfo(op, oauthUser.OpenId)
-	if ut.Id != 0 {
-		return nil, us.InfoById(ut.UserId)
-	}
-	err, oauthType := AllService.OauthService.GetTypeByOp(op)
-	if err != nil {
-		return err, nil
+	user, _, err := us.InfoByOauthId(op, oauthUser.OpenId, identity)
+	if err != nil || user != nil {
+		return err, user
 	}
 	//check if this email has been registered
 	email := oauthUser.Email
@@ -337,7 +426,8 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (e
 		// update email to oauthUser, in case it contain upper case
 		oauthUser.Email = email
 		// call this, if find user by email, it will update the email to local database
-		user, ldapErr := AllService.LdapService.GetUserInfoByEmailLocal(email)
+		var ldapErr error
+		user, ldapErr = AllService.LdapService.GetUserInfoByEmailLocal(email)
 		// If we enable ldap, and the error is not ErrLdapUserNotFound, return the error because we could not sure if the user is not found in ldap
 		if !(errors.Is(ldapErr, ErrLdapNotEnabled) || errors.Is(ldapErr, ErrLdapUserNotFound) || ldapErr == nil) {
 			return ldapErr, user
@@ -346,33 +436,36 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (e
 			// this means the user is not found in ldap, maybe ldao is not enabled
 			user = us.InfoByEmail(email)
 		}
-		if user.Id != 0 {
-			ut.FromOauthUser(user.Id, oauthUser, oauthType, op)
-			DB.Create(ut)
-			return nil, user
-		}
+	}
+	if user == nil || user.Id == 0 {
+		username := us.formatUsername(oauthUser.Username)
+		user = &model.User{Username: us.GenerateUsernameByOauth(username), GroupId: model.DefaultUserGroupID}
+		oauthUser.ToUser(user, false)
 	}
 
-	tx := DB.Begin()
-	ut = &model.UserThird{}
-	ut.FromOauthUser(0, oauthUser, oauthType, op)
-	// The initial username should be formatted
-	username := us.formatUsername(oauthUser.Username)
-	usernameUnique := us.GenerateUsernameByOauth(username)
-	user := &model.User{
-		Username: usernameUnique,
-		GroupId:  1,
-	}
-	oauthUser.ToUser(user, false)
-	tx.Create(user)
-	if user.Id == 0 {
-		tx.Rollback()
-		return errors.New("OauthRegisterFailed"), user
-	}
-	ut.UserId = user.Id
-	tx.Create(ut)
-	tx.Commit()
-	return nil, user
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		config, err := lockVerifiedOauthProvider(tx, op, identity)
+		if err != nil {
+			return err
+		}
+		bound, err := userByOauthBinding(tx, op, oauthUser.OpenId)
+		if err != nil {
+			return err
+		}
+		if bound != nil {
+			user = bound
+			return nil
+		}
+		if user.Id == 0 {
+			if err := tx.Create(user).Error; err != nil {
+				return errors.New("OauthRegisterFailed")
+			}
+		}
+		binding := &model.UserThird{}
+		binding.FromOauthUser(user.Id, oauthUser, config.OauthType, op)
+		return tx.Create(binding).Error
+	})
+	return err, user
 }
 
 // GenerateUsernameByOauth 生成用户名
@@ -393,13 +486,6 @@ func (us *UserService) UserThirdInfo(userId uint, op string) *model.UserThird {
 	ut := &model.UserThird{}
 	DB.Where("user_id = ? and op = ?", userId, op).First(ut)
 	return ut
-}
-
-// FindLatestUserIdFromLoginLogByUuid 根据uuid和设备id查找最后登录的用户id
-func (us *UserService) FindLatestUserIdFromLoginLogByUuid(uuid string, deviceId string) uint {
-	llog := &model.LoginLog{}
-	DB.Where("uuid = ? and device_id = ?", uuid, deviceId).Order("id desc").First(llog)
-	return llog.UserId
 }
 
 // IsPasswordEmptyById 根据用户id判断密码是否为空，主要用于第三方登录的自动注册
@@ -431,7 +517,7 @@ func (us *UserService) Register(username string, email string, password string, 
 		Username: username,
 		Email:    email,
 		Password: password,
-		GroupId:  1,
+		GroupId:  model.DefaultUserGroupID,
 		Status:   status,
 	}
 	err := us.Create(u)
@@ -479,24 +565,32 @@ func (us *UserService) getUserCount() int64 {
 	return count
 }
 
-// helper functions, getAdminUserCount
-func (us *UserService) getAdminUserCount() int64 {
-	var count int64
-	DB.Model(&model.User{}).Where("is_admin = ?", true).Count(&count)
-	return count
+func lastEnabledAdmin(tx *gorm.DB, id uint) (bool, error) {
+	if tx.Dialector.Name() == "sqlite" {
+		// SQLite ignores FOR UPDATE. Reserve its write lock before taking the read snapshot.
+		if err := tx.Model(&model.User{}).Where("1 = 0").UpdateColumn("id", gorm.Expr("id")).Error; err != nil {
+			return false, err
+		}
+	}
+	var admins []uint
+	err := tx.Model(&model.User{}).Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
+		Where("is_admin = ? AND status = ?", true, model.COMMON_STATUS_ENABLE).Order("id").Pluck("id", &admins).Error
+	return len(admins) == 1 && admins[0] == id, err
 }
 
 // UserTokenExpireTimestamp 生成用户token过期时间
 func (us *UserService) UserTokenExpireTimestamp() int64 {
 	exp := Config.App.TokenExpire
 	if exp == 0 {
-		//默认七天
-		exp = 604800
+		exp = 7 * 24 * time.Hour
 	}
 	return time.Now().Add(exp).Unix()
 }
 
 func (us *UserService) RefreshAccessToken(ut *model.UserToken) {
+	if len(Jwt.Key) > 0 {
+		return
+	}
 	ut.ExpiredAt = us.UserTokenExpireTimestamp()
 	DB.Model(ut).Update("expired_at", ut.ExpiredAt)
 }

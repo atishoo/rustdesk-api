@@ -3,11 +3,12 @@ app:
   web-client: 1  # 1:启用 0:禁用
   register: false #是否开启注册
   register-status: 1 # 注册用户默认状态 1:启用 2:禁用
-  captcha-threshold: 3 #   <0:disabled, 0 always, >0:enabled
-  ban-threshold: 0 # 0:disabled, >0:enabled
+  captcha-threshold: -1 # <0:disabled, 0:always, >0:below ban-threshold when both are enabled
+  ban-threshold: 10 # 0:disabled, >0:enabled
   show-swagger: 0 # 1:启用 0:禁用
   token-expire: 168h
   web-sso: true #web auth sso
+  admin-origins: "" # 可信管理控制台 Origin，以英文逗号分隔
   disable-pwd-login: false #禁用密码登录
 
 admin:
@@ -44,8 +45,10 @@ postgresql:
 
 rustdesk:
   id-server: "192.168.1.66:21116"
+  # must-login: false # Set to true or false to match an external ID Server. Leave unset to query a local ID Server.
   relay-server: "192.168.1.66:21117"
   api-server: "http://127.0.0.1:21114"
+  webclient-share-api-server: "" # Empty uses the Web Client's own origin for share redemption.
   key: ""
   key-file: "/data/id_ed25519.pub"
   personal: 1
@@ -79,6 +82,7 @@ ldap:
     email: "mail"
     first-name: "givenName"
     last-name: "sn"
-    sync: false         # If true, the user will be synchronized to the database when the user logs in. If false, the user will be synchronized to the database when the user be created.
+    # Enable only after verifying that a separate enabled local administrator outside LDAP can sign in.
+    sync: false         # When enabled, LDAP profile and administrator role are synchronized at sign-in.
     admin-group: "cn=admin,dc=example,dc=com" # The group name of the admin group, if the user is in this group, the user will be an admin.
     allow-group: "cn=users,dc=example,dc=com" # The group name of the users group, if the user is in this group, the user will be an login. 

@@ -1,13 +1,23 @@
 package admin
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"strings"
+	"unicode/utf8"
+
 	"github.com/lejianwen/rustdesk-api/v2/model"
 )
 
 type AddressBookForm struct {
-	RowId            uint     `json:"row_id"`
-	Id               string   `json:"id" validate:"required"`
+	RowId   uint                    `json:"row_id"`
+	Id      model.AddressBookTarget `json:"id" validate:"required"`
+	UserId  uint                    `json:"user_id"`
+	UserIds []uint                  `json:"user_ids"`
+	AddressBookFields
+}
+
+type AddressBookFields struct {
 	Username         string   `json:"username" `
 	Password         string   `json:"password" `
 	Hostname         string   `json:"hostname" `
@@ -15,8 +25,6 @@ type AddressBookForm struct {
 	Platform         string   `json:"platform" `
 	Tags             []string `json:"tags"`
 	Hash             string   `json:"hash"`
-	UserId           uint     `json:"user_id"`
-	UserIds          []uint   `json:"user_ids"`
 	ForceAlwaysRelay bool     `json:"forceAlwaysRelay"`
 	RdpPort          string   `json:"rdpPort"`
 	RdpUsername      string   `json:"rdpUsername"`
@@ -24,6 +32,61 @@ type AddressBookForm struct {
 	LoginName        string   `json:"loginName" `
 	SameServer       bool     `json:"sameServer"`
 	CollectionId     uint     `json:"collection_id"`
+}
+
+type AddressBookUpdateForm struct {
+	RowId  uint                    `json:"row_id" validate:"required"`
+	Id     model.AddressBookTarget `json:"id"`
+	UserId uint                    `json:"user_id"`
+	AddressBookFields
+	supplied map[string]json.RawMessage
+}
+
+// PersonalAddressBookUpdateForm documents the owner required for personal updates.
+type PersonalAddressBookUpdateForm struct {
+	AddressBookUpdateForm
+	UserId uint `json:"user_id" validate:"required"`
+}
+
+func (f *AddressBookUpdateForm) UnmarshalJSON(data []byte) error {
+	type decoded AddressBookUpdateForm
+	if err := json.Unmarshal(data, (*decoded)(f)); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, &f.supplied)
+}
+
+func (f *AddressBookUpdateForm) includes(field string) bool {
+	value, found := f.supplied[field]
+	return found && string(value) != "null"
+}
+
+func (f *AddressBookUpdateForm) ToUpdate(current *model.AddressBook) (*model.AddressBook, []string) {
+	patch := (AddressBookForm{
+		RowId: f.RowId, Id: f.Id, UserId: f.UserId, AddressBookFields: f.AddressBookFields,
+	}).ToAddressBook()
+	if !f.includes("id") {
+		patch.Id = current.Id
+	}
+	if !f.includes("user_id") {
+		patch.UserId = current.UserId
+	}
+	if !f.includes("collection_id") {
+		patch.CollectionId = current.CollectionId
+	}
+	var fields []string
+	for key, column := range map[string]string{
+		"id": "id", "username": "username", "password": "password", "hostname": "hostname",
+		"alias": "alias", "platform": "platform", "tags": "tags", "hash": "hash",
+		"user_id": "user_id", "collection_id": "collection_id", "online": "online",
+		"forceAlwaysRelay": "force_always_relay", "rdpPort": "rdp_port",
+		"rdpUsername": "rdp_username", "loginName": "login_name", "sameServer": "same_server",
+	} {
+		if f.includes(key) {
+			fields = append(fields, column)
+		}
+	}
+	return patch, fields
 }
 
 func (a AddressBookForm) ToAddressBook() *model.AddressBook {
@@ -91,19 +154,38 @@ type AddressBookQuery struct {
 }
 
 type ShareByWebClientForm struct {
-	Id           string `json:"id" validate:"required"`
-	PasswordType string `json:"password_type" validate:"required,oneof=once fixed"` //只能是once,fixed
-	Password     string `json:"password" validate:"required"`
-	Expire       int64  `json:"expire"`
+	Id           model.AddressBookTarget `json:"id" validate:"required"`
+	RowId        uint                    `json:"row_id" validate:"required,gt=0" minimum:"1"`
+	PasswordType string                  `json:"password_type" validate:"required,oneof=once fixed"` //只能是once,fixed
+	Password     string                  `json:"password" validate:"required"`
+	Expire       int64                   `json:"expire"`
+}
+
+func (sbwcf ShareByWebClientForm) HasValidPassword() bool {
+	// Match browser atob, which ignores ASCII whitespace and accepts omitted padding.
+	encoded := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\n', '\f', '\r':
+			return -1
+		}
+		return r
+	}, sbwcf.Password)
+	encoding := base64.StdEncoding
+	if len(encoded)%4 != 0 {
+		encoding = base64.RawStdEncoding
+	}
+	decoded, err := encoding.DecodeString(encoded)
+	return err == nil && len(decoded) != 0 && utf8.Valid(decoded)
 }
 
 func (sbwcf ShareByWebClientForm) ToShareRecord() *model.ShareRecord {
 	return &model.ShareRecord{
-		UserId:       0,
-		PeerId:       sbwcf.Id,
-		PasswordType: sbwcf.PasswordType,
-		Password:     sbwcf.Password,
-		Expire:       sbwcf.Expire,
+		UserId:           0,
+		PeerId:           sbwcf.Id,
+		AddressBookRowId: sbwcf.RowId,
+		PasswordType:     sbwcf.PasswordType,
+		Password:         sbwcf.Password,
+		Expire:           sbwcf.Expire,
 	}
 }
 

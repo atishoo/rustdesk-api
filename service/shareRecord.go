@@ -26,6 +26,11 @@ func (srs *ShareRecordService) List(page, pageSize uint, where func(tx *gorm.DB)
 	tx.Count(&res.Total)
 	tx.Scopes(Paginate(page, pageSize))
 	tx.Find(&res.ShareRecords)
+	for _, record := range res.ShareRecords {
+		if expiry := record.ExpiryTime(); !expiry.IsZero() {
+			record.ExpiresAt = expiry.Unix()
+		}
+	}
 	return
 }
 

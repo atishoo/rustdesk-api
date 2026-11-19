@@ -13,7 +13,6 @@ import (
 
 func ApiInit(g *gin.Engine) {
 
-	//g.Use(middleware.Cors())
 	//swagger
 	if global.Config.App.ShowSwagger == 1 {
 		g.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.InstanceName("api")))
@@ -35,7 +34,7 @@ func ApiInit(g *gin.Engine) {
 		l := &api.Login{}
 		// 如果返回oidc则可以通过oidc登录
 		frg.GET("/login-options", l.LoginOptions)
-		frg.POST("/login", l.Login)
+		frg.POST("/login", middleware.NativeLoginLimiter(), l.Login)
 
 	}
 

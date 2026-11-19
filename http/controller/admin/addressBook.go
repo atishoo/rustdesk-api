@@ -1,15 +1,15 @@
 package admin
 
 import (
-	"encoding/json"
-	_ "encoding/json"
+	"errors"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"gorm.io/gorm"
-	"strconv"
 )
 
 type AddressBook struct {
@@ -70,13 +70,15 @@ func (ct *AddressBook) Create(c *gin.Context) {
 		return
 	}
 
-	ex := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(t.UserId, t.Id, t.CollectionId)
-	if ex.RowId > 0 {
+	err := service.AllService.AddressBookService.Create(t)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
 		return
 	}
-
-	err := service.AllService.AddressBookService.Create(t)
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -134,15 +136,14 @@ func (ct *AddressBook) BatchCreate(c *gin.Context) {
 			}
 		}
 	}*/
-	ts := f.ToAddressBooks()
-	for _, t := range ts {
-		if t.UserId == 0 {
-			continue
-		}
-		ex := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(t.UserId, t.Id, t.CollectionId)
-		if ex.RowId == 0 {
-			service.AllService.AddressBookService.Create(t)
-		}
+	err := service.AllService.AddressBookService.BatchCreate(f.ToAddressBooks())
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
 	}
 
 	response.Success(c, nil)
@@ -168,7 +169,7 @@ func (ct *AddressBook) List(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	res := service.AllService.AddressBookService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
+	res, err := service.AllService.AddressBookService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
 		tx.Preload("Collection", func(txc *gorm.DB) *gorm.DB {
 			return txc.Select("id,name")
 		})
@@ -189,9 +190,9 @@ func (ct *AddressBook) List(c *gin.Context) {
 		}
 	})
 
-	abCIds := make([]uint, 0)
-	for _, ab := range res.AddressBooks {
-		abCIds = append(abCIds, ab.CollectionId)
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+		return
 	}
 	response.Success(c, res)
 }
@@ -199,23 +200,18 @@ func (ct *AddressBook) List(c *gin.Context) {
 // Update 编辑
 // @Tags 地址簿
 // @Summary 地址簿编辑
-// @Description 地址簿编辑
+// @Description 仅更新提交的地址簿字段。
 // @Accept  json
 // @Produce  json
-// @Param body body admin.AddressBookForm true "地址簿信息"
+// @Param body body admin.AddressBookUpdateForm true "地址簿信息"
 // @Success 200 {object} response.Response{data=model.AddressBook}
 // @Failure 500 {object} response.Response
 // @Router /admin/address_book/update [post]
 // @Security token
 func (ct *AddressBook) Update(c *gin.Context) {
-	f := &admin.AddressBookForm{}
+	f := &admin.AddressBookUpdateForm{}
 	if err := c.ShouldBindJSON(f); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
-		return
-	}
-	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		response.Fail(c, 101, errList[0])
 		return
 	}
 	if f.RowId == 0 {
@@ -227,12 +223,24 @@ func (ct *AddressBook) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
-	t := f.ToAddressBook()
-	if t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId) {
+	t, fields := f.ToUpdate(ex)
+	if t.UserId == 0 || t.Id == "" || (t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId)) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	err := service.AllService.AddressBookService.UpdateAll(t)
+	err := service.AllService.AddressBookService.UpdateFields(ex, t, fields)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -285,9 +293,13 @@ func (ct *AddressBook) Delete(c *gin.Context) {
 // @Param body body admin.ShareByWebClientForm true "地址簿信息"
 // @Success 200 {object} response.Response
 // @Failure 500 {object} response.Response
-// @Router /admin/address_book/share [post]
+// @Router /admin/address_book/shareByWebClient [post]
 // @Security token
 func (ct *AddressBook) ShareByWebClient(c *gin.Context) {
+	if global.Config.App.WebClient != 1 {
+		response.Fail(c, 101, "Web Client is disabled")
+		return
+	}
 	f := &admin.ShareByWebClientForm{}
 	if err := c.ShouldBindJSON(f); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
@@ -298,16 +310,30 @@ func (ct *AddressBook) ShareByWebClient(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
+	if !f.HasValidPassword() {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
 
 	u := service.AllService.UserService.CurUser(c)
-	ab := service.AllService.AddressBookService.InfoByUserIdAndId(u.Id, f.Id)
-	if ab.RowId == 0 {
+	_, err := service.AllService.AddressBookService.ShareableEntry(f.RowId, u.Id, f.Id)
+	if errors.Is(err, service.ErrWebClientExplicitServerTarget) || errors.Is(err, service.ErrWebClientDirectTarget) ||
+		errors.Is(err, service.ErrWebClientTargetWhitespace) || errors.Is(err, service.ErrWebClientEmptyTarget) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
 	m := f.ToShareRecord()
 	m.UserId = u.Id
-	err := service.AllService.AddressBookService.ShareByWebClient(m)
+	err = service.AllService.AddressBookService.ShareByWebClient(m)
+	if errors.Is(err, service.ErrWebClientShareRequiresLogin) || errors.Is(err, service.ErrWebClientLoginPolicyUnknown) ||
+		errors.Is(err, service.ErrWebClientMissingIDServer) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -324,8 +350,12 @@ func (ct *AddressBook) BatchCreateFromPeers(c *gin.Context) {
 		return
 	}
 
-	if f.UserId == 0 {
+	if f.UserId == 0 || len(f.PeerIds) == 0 {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	if service.AllService.UserService.InfoById(f.UserId).Id == 0 {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
 
@@ -335,28 +365,34 @@ func (ct *AddressBook) BatchCreateFromPeers(c *gin.Context) {
 			response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 			return
 		}
+		if collection.UserId != f.UserId {
+			response.Fail(c, 101, response.TranslateMsg(c, "NoAccess"))
+			return
+		}
 	}
 
 	pl := int64(len(f.PeerIds))
 	peers := service.AllService.PeerService.List(1, uint(pl), func(tx *gorm.DB) {
 		tx.Where("row_id in ?", f.PeerIds)
 	})
-	if peers.Total == 0 || pl != peers.Total {
+	if pl != peers.Total || len(peers.Peers) != len(f.PeerIds) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
 
-	tags, _ := json.Marshal(f.Tags)
-	for _, peer := range peers.Peers {
-		ab := service.AllService.AddressBookService.FromPeer(peer)
-		ab.Tags = tags
-		ab.CollectionId = f.CollectionId
-		ab.UserId = f.UserId
-		ex := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(f.UserId, ab.Id, ab.CollectionId)
-		if ex.RowId != 0 {
-			continue
-		}
-		service.AllService.AddressBookService.Create(ab)
+	err := service.AllService.AddressBookService.BatchCreateFromPeers(peers.Peers, f.UserId, f.CollectionId, f.Tags)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
+	if errors.Is(err, service.ErrDuplicatePeerID) || errors.Is(err, service.ErrUnsupportedAddressBookPeerID) ||
+		errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
 	}
 	response.Success(c, nil)
 }

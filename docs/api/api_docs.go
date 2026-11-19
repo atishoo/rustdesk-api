@@ -1200,7 +1200,7 @@ const docTemplateapi = `{
         },
         "/sysinfo": {
             "post": {
-                "description": "提交系统信息",
+                "description": "设备 ID 和 UUID 均必填，每项最多 256 字节。",
                 "consumes": [
                     "application/json"
                 ],

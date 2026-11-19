@@ -6,12 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/controller/api"
+	"github.com/lejianwen/rustdesk-api/v2/http/middleware"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	apiReq "github.com/lejianwen/rustdesk-api/v2/http/request/api"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	adResp "github.com/lejianwen/rustdesk-api/v2/http/response/admin"
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
+	"github.com/lejianwen/rustdesk-api/v2/utils"
 )
 
 type Login struct {
@@ -59,7 +61,7 @@ func (ct *Login) Login(c *gin.Context) {
 	// 检查是否需要验证码
 	if needCaptcha {
 		if f.CaptchaId == "" || f.Captcha == "" || !loginLimiter.VerifyCaptcha(f.CaptchaId, f.Captcha) {
-			response.Fail(c, 101, response.TranslateMsg(c, "CaptchaError"))
+			response.Fail(c, 110, response.TranslateMsg(c, "CaptchaError"))
 			return
 		}
 	}
@@ -86,14 +88,18 @@ func (ct *Login) Login(c *gin.Context) {
 		return
 	}
 
-	ut := service.AllService.UserService.Login(u, &model.LoginLog{
+	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
 		UserId:   u.Id,
 		Client:   model.LoginLogClientWebAdmin,
 		Uuid:     "", //must be empty
 		Ip:       clientIp,
 		Type:     model.LoginLogTypeAccount,
 		Platform: f.Platform,
-	})
+	}, false)
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "SystemError"))
+		return
+	}
 
 	// 登录成功，清除登录限制
 	loginLimiter.RemoveAttempts(clientIp)
@@ -142,7 +148,10 @@ func (ct *Login) Logout(c *gin.Context) {
 	u := service.AllService.UserService.CurUser(c)
 	token, ok := c.Get("token")
 	if ok {
-		service.AllService.UserService.Logout(u, token.(string))
+		if err := service.AllService.UserService.Logout(u, token.(string)); err != nil {
+			response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+			return
+		}
 	}
 	response.Success(c, nil)
 }
@@ -155,7 +164,7 @@ func (ct *Login) Logout(c *gin.Context) {
 // @Produce  json
 // @Success 200 {object} []string
 // @Failure 500 {object} response.ErrorResponse
-// @Router /admin/login-options [post]
+// @Router /admin/login-options [get]
 func (ct *Login) LoginOptions(c *gin.Context) {
 	loginLimiter := global.LoginLimiter
 	clientIp := c.ClientIP()
@@ -164,13 +173,23 @@ func (ct *Login) LoginOptions(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "LoginBanned"))
 		return
 	}
-	ops := service.AllService.OauthService.GetOauthProviders()
+	origin := c.GetHeader("Origin")
+	if origin == "" {
+		origin = c.Query("origin")
+	}
+	ops := []string{}
+	if middleware.AdminRedirectOriginAllowed(origin) {
+		ops = append(ops, service.AllService.OauthService.GetOauthProviders()...)
+		if global.Config.App.WebSso {
+			ops = append(ops, model.OauthTypeWebauth)
+		}
+	}
 	response.Success(c, gin.H{
 		"ops":          ops,
 		"register":     global.Config.App.Register,
 		"need_captcha": needCaptcha,
 		"disable_pwd":  global.Config.App.DisablePwdLogin,
-		"auto_oidc":    global.Config.App.DisablePwdLogin && len(ops) == 1,
+		"auto_oidc":    global.Config.App.DisablePwdLogin && len(ops) == 1 && ops[0] != model.OauthTypeWebauth,
 	})
 }
 
@@ -182,12 +201,14 @@ func (ct *Login) LoginOptions(c *gin.Context) {
 // @Produce  json
 // @Router /admin/oidc/auth [post]
 func (ct *Login) OidcAuth(c *gin.Context) {
-	// o := &api.Oauth{}
-	// o.OidcAuth(c)
 	f := &apiReq.OidcAuthRequest{}
 	err := c.ShouldBindJSON(f)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
+		return
+	}
+	if !middleware.AdminRedirectAllowed(f.RedirectURL, c.GetHeader("Origin")) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
 
@@ -196,23 +217,41 @@ func (ct *Login) OidcAuth(c *gin.Context) {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
 		return
 	}
+	if f.Op == model.OauthTypeWebauth {
+		url = f.RedirectURL + "#/oauth/" + state
+	}
+	ticket := ""
+	if f.Op == model.OauthTypeWebauth {
+		ticket = utils.RandomString(32)
+		if ticket == "" {
+			response.Error(c, response.TranslateMsg(c, "SystemError"))
+			return
+		}
+	}
 
 	service.AllService.OauthService.SetOauthCache(state, &service.OauthCacheItem{
 		Action:     service.OauthActionTypeLogin,
 		Op:         f.Op,
-		Id:         f.Id,
-		DeviceType: "webadmin",
+		Id:         string(f.Id),
+		DeviceType: model.LoginLogClientWebAdmin,
 		// DeviceOs: ct.Platform(c),
-		DeviceOs: f.DeviceInfo.Os,
-		Uuid:     f.Uuid,
-		Verifier: verifier,
-		Nonce:    nonce,
+		DeviceName:  f.DeviceInfo.Name,
+		DeviceOs:    f.DeviceInfo.Os,
+		Uuid:        string(f.Uuid),
+		Verifier:    verifier,
+		Nonce:       nonce,
+		RedirectURL: f.RedirectURL,
+		Ticket:      ticket,
 	}, 5*60)
 
-	response.Success(c, gin.H{
+	data := gin.H{
 		"code": state,
 		"url":  url,
-	})
+	}
+	if ticket != "" {
+		data["ticket"] = ticket
+	}
+	response.Success(c, data)
 }
 
 // OidcAuthQuery
@@ -223,10 +262,11 @@ func (ct *Login) OidcAuth(c *gin.Context) {
 // @Produce  json
 // @Success 200 {object} response.Response{data=adResp.LoginPayload}
 // @Failure 500 {object} response.Response
-// @Router /admin/oidc/auth-query [get]
+// @Param body body apiReq.OidcAuthQuery true "授权状态和票据"
+// @Router /admin/oidc/auth-query [post]
 func (ct *Login) OidcAuthQuery(c *gin.Context) {
 	o := &api.Oauth{}
-	u, ut := o.OidcAuthQueryPre(c)
+	u, ut := o.OidcAuthQueryPre(c, true)
 	if ut == nil {
 		return
 	}

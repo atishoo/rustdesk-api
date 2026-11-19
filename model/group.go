@@ -5,6 +5,8 @@ const (
 	GroupTypeShare   = 2 // 共享
 )
 
+const DefaultUserGroupID = 1
+
 type Group struct {
 	IdModel
 	Name string `json:"name" gorm:"default:'';not null;"`

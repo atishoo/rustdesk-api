@@ -1,7 +1,9 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 )
@@ -14,22 +16,37 @@ func (i *Index) Index(c *gin.Context) {
 }
 
 func (i *Index) ConfigJs(c *gin.Context) {
-	apiServer := global.Config.Rustdesk.ApiServer
-	magicQueryonline := global.Config.Rustdesk.WebclientMagicQueryonline
-	tmp := fmt.Sprintf(`localStorage.setItem('api-server', '%v');
-const ws2_prefix = 'wc-';
-localStorage.setItem(ws2_prefix+'api-server', '%v');
+	config := global.Config.Rustdesk
+	apiServer, _ := json.Marshal(config.ApiServer)
+	shareApiServer, _ := json.Marshal(config.WebclientShareApiServer)
+	idServer, _ := json.Marshal(config.IdServer)
+	relayServer, _ := json.Marshal(config.RelayServer)
+	key, _ := json.Marshal(config.Key)
+	wsHost, _ := json.Marshal(config.WsHost)
+	script := fmt.Sprintf(`const webClientApiServer = %s;
+window.rustdeskWebClientApiServer = %s;
+const webClientServer = { server: %s, relay: %s };
+const webClientBuiltIn = window.location.pathname === '/webclient/';
+const webClientLaunch = new URLSearchParams(window.location.hash.startsWith('#/?') ? window.location.hash.slice(3) : '');
+const webClientGuest = webClientLaunch.has('share_token');
+const webClientManaged = !webClientGuest && webClientLaunch.get('managed') === '1';
+if (!webClientGuest && !webClientManaged) {
+    window.rustdeskWebClientAccountApiServer = webClientBuiltIn ? window.location.origin : webClientApiServer;
+    window.rustdeskWebClientRelayTarget = webClientServer;
+}
 
 window.webclient_magic_queryonline = %d;
-window.ws_host = '%v';
-`, apiServer, apiServer, magicQueryonline, global.Config.Rustdesk.WsHost)
-	//	tmp := `
-	//localStorage.setItem('api-server', "` + apiServer + `")
-	//const ws2_prefix = 'wc-'
-	//localStorage.setItem(ws2_prefix+'api-server', "` + apiServer + `")
-	//
-	//window.webclient_magic_queryonline = ` + magicQueryonline + ``
+window.ws_host = %s;
+
+if (webClientBuiltIn && webClientManaged) {
+    const id = webClientLaunch.get('id');
+    if (id) {
+        window.rustdeskManagedTarget = { id, ...webClientServer, key: %s };
+    }
+}
+`, apiServer, shareApiServer, idServer, relayServer, config.WebclientMagicQueryonline, wsHost, key)
 
 	c.Header("Content-Type", "application/javascript")
-	c.String(200, tmp)
+	c.Header("Cache-Control", "no-store")
+	c.String(200, script)
 }

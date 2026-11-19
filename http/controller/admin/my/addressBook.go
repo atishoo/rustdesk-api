@@ -1,7 +1,8 @@
 package my
 
 import (
-	"encoding/json"
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
@@ -33,7 +34,7 @@ func (ct *AddressBook) List(c *gin.Context) {
 	}
 	u := service.AllService.UserService.CurUser(c)
 	query.UserId = int(u.Id)
-	res := service.AllService.AddressBookService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
+	res, err := service.AllService.AddressBookService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
 		//预加载地址簿名称
 		tx.Preload("Collection", func(txc *gorm.DB) *gorm.DB {
 			return txc.Select("id,name")
@@ -53,9 +54,9 @@ func (ct *AddressBook) List(c *gin.Context) {
 		}
 	})
 
-	abCIds := make([]uint, 0)
-	for _, ab := range res.AddressBooks {
-		abCIds = append(abCIds, ab.CollectionId)
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+		return
 	}
 	response.Success(c, res)
 }
@@ -90,13 +91,15 @@ func (ct *AddressBook) Create(c *gin.Context) {
 		return
 	}
 
-	ex := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(t.UserId, t.Id, t.CollectionId)
-	if ex.RowId > 0 {
+	err := service.AllService.AddressBookService.Create(t)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
 		return
 	}
-
-	err := service.AllService.AddressBookService.Create(t)
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -107,23 +110,18 @@ func (ct *AddressBook) Create(c *gin.Context) {
 // Update 编辑
 // @Tags 我的地址簿
 // @Summary 地址簿编辑
-// @Description 地址簿编辑
+// @Description 仅更新提交的地址簿字段。
 // @Accept  json
 // @Produce  json
-// @Param body body admin.AddressBookForm true "地址簿信息"
+// @Param body body admin.PersonalAddressBookUpdateForm true "地址簿信息"
 // @Success 200 {object} response.Response{data=model.AddressBook}
 // @Failure 500 {object} response.Response
 // @Router /admin/my/address_book/update [post]
 // @Security token
 func (ct *AddressBook) Update(c *gin.Context) {
-	f := &admin.AddressBookForm{}
+	f := &admin.AddressBookUpdateForm{}
 	if err := c.ShouldBindJSON(f); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
-		return
-	}
-	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		response.Fail(c, 101, errList[0])
 		return
 	}
 	if f.RowId == 0 {
@@ -145,12 +143,24 @@ func (ct *AddressBook) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "NoAccess"))
 		return
 	}
-	t := f.ToAddressBook()
-	if t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId) {
+	t, fields := f.ToUpdate(ex)
+	if t.Id == "" || (t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId)) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	err := service.AllService.AddressBookService.UpdateAll(t)
+	err := service.AllService.AddressBookService.UpdateFields(ex, t, fields)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -227,21 +237,24 @@ func (ct *AddressBook) BatchCreateFromPeers(c *gin.Context) {
 		tx.Where("row_id in ?", f.PeerIds)
 		tx.Where("user_id = ?", u.Id)
 	})
-	if peers.Total == 0 || pl != peers.Total {
+	if pl != peers.Total || len(peers.Peers) != len(f.PeerIds) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
 
-	tags, _ := json.Marshal(f.Tags)
-	for _, peer := range peers.Peers {
-		ab := service.AllService.AddressBookService.FromPeer(peer)
-		ab.Tags = tags
-		ab.CollectionId = f.CollectionId
-		ex := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(u.Id, ab.Id, ab.CollectionId)
-		if ex.RowId != 0 {
-			continue
-		}
-		service.AllService.AddressBookService.Create(ab)
+	err := service.AllService.AddressBookService.BatchCreateFromPeers(peers.Peers, u.Id, f.CollectionId, f.Tags)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
+	if errors.Is(err, service.ErrDuplicatePeerID) || errors.Is(err, service.ErrUnsupportedAddressBookPeerID) ||
+		errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
 	}
 	response.Success(c, nil)
 }
@@ -258,11 +271,15 @@ func (ct *AddressBook) BatchUpdateTags(c *gin.Context) {
 		tx.Where("row_id in ?", f.RowIds)
 		tx.Where("user_id = ?", u.Id)
 	})
-	if abs.Total == 0 {
+	if len(abs.AddressBooks) == 0 || len(abs.AddressBooks) != len(f.RowIds) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
 	err := service.AllService.AddressBookService.BatchUpdateTags(abs.AddressBooks, f.Tags)
+	if errors.Is(err, service.ErrInvalidAddressBookTags) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

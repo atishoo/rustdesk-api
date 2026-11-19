@@ -1,11 +1,22 @@
 package api
 
-import "github.com/lejianwen/rustdesk-api/v2/model"
+import (
+	"encoding/json"
+
+	"github.com/lejianwen/rustdesk-api/v2/model"
+)
 
 type AddressBookFormData struct {
-	Tags      []string             `json:"tags"`
-	Peers     []*model.AddressBook `json:"peers"`
-	TagColors string               `json:"tag_colors"`
+	Tags      []string                  `json:"tags"`
+	Peers     []addressBookSnapshotPeer `json:"peers"`
+	TagColors string                    `json:"tag_colors"`
+}
+
+// The GET snapshot carries server timestamps, which the upload leaves untouched.
+type addressBookSnapshotPeer struct {
+	*model.AddressBook
+	CreatedAt json.RawMessage `json:"created_at"`
+	UpdatedAt json.RawMessage `json:"updated_at"`
 }
 
 type AddressBookForm struct {
@@ -13,14 +24,14 @@ type AddressBookForm struct {
 }
 
 type PeerForm struct {
-	Cpu      string `json:"cpu"`
-	Hostname string `json:"hostname"`
-	Id       string `json:"id"`
-	Memory   string `json:"memory"`
-	Os       string `json:"os"`
-	Username string `json:"username"`
-	Uuid     string `json:"uuid"`
-	Version  string `json:"version"`
+	Cpu      string               `json:"cpu"`
+	Hostname string               `json:"hostname"`
+	Id       model.DeviceIdentity `json:"id"`
+	Memory   string               `json:"memory"`
+	Os       string               `json:"os"`
+	Username string               `json:"username"`
+	Uuid     model.DeviceIdentity `json:"uuid"`
+	Version  string               `json:"version"`
 }
 
 func (pf *PeerForm) ToPeer() *model.Peer {
@@ -73,7 +84,7 @@ type TagColorForm struct {
 }
 
 type PeerInfoInHeartbeat struct {
-	Id   string `json:"id"`
-	Uuid string `json:"uuid"`
-	Ver  int    `json:"ver"`
+	Id   model.DeviceIdentity `json:"id"`
+	Uuid model.DeviceIdentity `json:"uuid"`
+	Ver  int                  `json:"ver"`
 }

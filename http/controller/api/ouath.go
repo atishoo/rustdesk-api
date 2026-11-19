@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/subtle"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +14,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"gorm.io/gorm"
 )
 
 type Oauth struct {
@@ -28,9 +31,13 @@ type Oauth struct {
 // @Router /oidc/auth [post]
 func (o *Oauth) OidcAuth(c *gin.Context) {
 	f := &api.OidcAuthRequest{}
-	err := c.ShouldBindJSON(&f)
+	err := c.ShouldBindJSON(f)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, "ParamsError")+err.Error())
+		return
+	}
+	if f.DeviceInfo.Type == model.LoginLogClientWebAdmin {
+		response.Error(c, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
 
@@ -44,9 +51,9 @@ func (o *Oauth) OidcAuth(c *gin.Context) {
 
 	service.AllService.OauthService.SetOauthCache(state, &service.OauthCacheItem{
 		Action:     service.OauthActionTypeLogin,
-		Id:         f.Id,
+		Id:         string(f.Id),
 		Op:         f.Op,
-		Uuid:       f.Uuid,
+		Uuid:       string(f.Uuid),
 		DeviceName: f.DeviceInfo.Name,
 		DeviceOs:   f.DeviceInfo.Os,
 		DeviceType: f.DeviceInfo.Type,
@@ -60,54 +67,80 @@ func (o *Oauth) OidcAuth(c *gin.Context) {
 	})
 }
 
-func (o *Oauth) OidcAuthQueryPre(c *gin.Context) (*model.User, *model.UserToken) {
-	var u *model.User
-	var ut *model.UserToken
+func (o *Oauth) OidcAuthQueryPre(c *gin.Context, webAdmin bool) (*model.User, *model.UserToken) {
 	q := &api.OidcAuthQuery{}
 
-	// 解析查询参数并处理错误
-	if err := c.ShouldBindQuery(q); err != nil {
+	if err := c.ShouldBind(q); err != nil {
 		response.Error(c, response.TranslateMsg(c, "ParamsError")+": "+err.Error())
 		return nil, nil
 	}
 
 	// 获取 OAuth 缓存
-	v := service.AllService.OauthService.GetOauthCache(q.Code)
+	oauthService := service.AllService.OauthService
+	v := oauthService.GetOauthCache(q.Code)
 	if v == nil {
 		response.Error(c, response.TranslateMsg(c, "OauthExpired"))
+		return nil, nil
+	}
+	if v.Action != service.OauthActionTypeLogin || webAdmin != (v.DeviceType == model.LoginLogClientWebAdmin) || (webAdmin && (v.Ticket == "" || subtle.ConstantTimeCompare([]byte(q.Ticket), []byte(v.Ticket)) != 1)) {
+		response.Error(c, response.TranslateMsg(c, "ParamsError"))
 		return nil, nil
 	}
 
 	// 如果 UserId 为 0，说明还在授权中
 	if v.UserId == 0 {
+		if v.DeviceType == model.LoginLogClientWebAdmin {
+			response.Success(c, gin.H{"pending": true})
+			return nil, nil
+		}
 		//fix: 1.4.2 webclient oidc
 		c.JSON(http.StatusOK, gin.H{"message": "Authorization in progress, please login and bind", "error": "No authed oidc is found"})
 		return nil, nil
 	}
 
-	// 获取用户信息
-	u = service.AllService.UserService.InfoById(v.UserId)
-	if u == nil {
+	claimed := *v
+	claimed.Redeeming = true
+	if v.Redeeming || !oauthService.ReplaceOauthCache(q.Code, v, &claimed) {
+		if oauthService.GetOauthCache(q.Code) == nil {
+			response.Error(c, response.TranslateMsg(c, "OauthExpired"))
+		} else {
+			c.JSON(http.StatusServiceUnavailable, response.ErrorResponse{Error: response.TranslateMsg(c, "SystemError")})
+		}
+		return nil, nil
+	}
+	defer oauthService.ConsumeOauthCache(q.Code, &claimed)
+
+	u := &model.User{}
+	err := service.DB.First(u, claimed.UserId).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		response.Error(c, response.TranslateMsg(c, "UserNotFound"))
 		return nil, nil
 	}
-
-	// 删除 OAuth 缓存
-	service.AllService.OauthService.DeleteOauthCache(q.Code)
+	if err != nil {
+		oauthService.ReplaceOauthCache(q.Code, &claimed, v)
+		c.JSON(http.StatusInternalServerError, response.ErrorResponse{Error: response.TranslateMsg(c, "SystemError")})
+		return nil, nil
+	}
+	if !service.AllService.UserService.CheckUserEnable(u) {
+		response.Error(c, response.TranslateMsg(c, "UserDisabled"))
+		return nil, nil
+	}
 
 	// 创建登录日志并生成用户令牌
-	ut = service.AllService.UserService.Login(u, &model.LoginLog{
+	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
 		UserId:   u.Id,
-		Client:   v.DeviceType,
-		DeviceId: v.Id,
-		Uuid:     v.Uuid,
+		Client:   claimed.DeviceType,
+		DeviceId: model.DeviceIdentity(claimed.Id),
+		Uuid:     model.DeviceIdentity(claimed.Uuid),
 		Ip:       c.ClientIP(),
 		Type:     model.LoginLogTypeOauth,
-		Platform: v.DeviceOs,
-	})
+		Platform: claimed.DeviceOs,
+	}, !webAdmin)
 
-	if ut == nil {
-		response.Error(c, response.TranslateMsg(c, "LoginFailed"))
+	if err != nil {
+		// 恢复原状态，保留原来的过期时间。
+		oauthService.ReplaceOauthCache(q.Code, &claimed, v)
+		c.JSON(http.StatusInternalServerError, response.ErrorResponse{Error: response.TranslateMsg(c, "SystemError")})
 		return nil, nil
 	}
 
@@ -125,7 +158,7 @@ func (o *Oauth) OidcAuthQueryPre(c *gin.Context) (*model.User, *model.UserToken)
 // @Failure 500 {object} response.ErrorResponse
 // @Router /oidc/auth-query [get]
 func (o *Oauth) OidcAuthQuery(c *gin.Context) {
-	u, ut := o.OidcAuthQueryPre(c)
+	u, ut := o.OidcAuthQueryPre(c, false)
 	if u == nil || ut == nil {
 		return
 	}
@@ -164,15 +197,24 @@ func (o *Oauth) OauthCallback(c *gin.Context) {
 		})
 		return
 	}
+	webAdmin := oauthCache.DeviceType == model.LoginLogClientWebAdmin
+	action := oauthCache.Action
+	if (webAdmin || action == service.OauthActionTypeBind) && oauthCache.RedirectURL == "" {
+		c.HTML(http.StatusOK, "oauth_fail.html", gin.H{"message": "ParamsError"})
+		return
+	}
 	nonce := oauthCache.Nonce
 	op := oauthCache.Op
-	action := oauthCache.Action
 	verifier := oauthCache.Verifier
 	var user *model.User
 	// 获取用户信息
 	code := c.Query("code")
-	err, oauthUser := oauthService.Callback(code, verifier, op, nonce)
+	err, oauthUser, identity := oauthService.Callback(code, verifier, op, nonce)
 	if err != nil {
+		if action == service.OauthActionTypeBind {
+			oauthBindResult(c, oauthCache.RedirectURL, "OauthFailed")
+			return
+		}
 		c.HTML(http.StatusOK, "oauth_fail.html", gin.H{
 			"message":     "OauthFailed",
 			"sub_message": err.Error(),
@@ -187,72 +229,85 @@ func (o *Oauth) OauthCallback(c *gin.Context) {
 		// 检查此openid是否已经绑定过
 		utr := oauthService.UserThirdInfo(op, openid)
 		if utr.UserId > 0 {
-			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{
-				"message": "OauthHasBindOtherUser",
-			})
+			oauthBindResult(c, oauthCache.RedirectURL, "OauthHasBindOtherUser")
 			return
 		}
 		//绑定
-		user = service.AllService.UserService.InfoById(userId)
-		if user == nil {
-			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{
-				"message": "ItemNotFound",
-			})
-			return
-		}
-		//绑定
-		err := oauthService.BindOauthUser(userId, oauthUser, op)
+		err := oauthService.BindOauthUser(userId, oauthUser, op, identity)
 		if err != nil {
-			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{
-				"message": "BindFail",
-			})
+			message := "BindFail"
+			switch {
+			case errors.Is(err, gorm.ErrRecordNotFound):
+				message = "ItemNotFound"
+			case errors.Is(err, service.ErrOauthIdentityChanged):
+				message = "OauthExpired"
+			}
+			oauthBindResult(c, oauthCache.RedirectURL, message)
 			return
 		}
-		c.HTML(http.StatusOK, "oauth_success.html", gin.H{
-			"message": "BindSuccess",
-		})
+		oauthBindResult(c, oauthCache.RedirectURL, "BindSuccess")
 		return
 
 	} else if action == service.OauthActionTypeLogin {
 		//登录
-		if userId != 0 {
+		if userId != 0 || oauthCache.OpenId != "" {
 			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{
 				"message": "OauthHasBeenSuccess",
 			})
 			return
 		}
-		user = service.AllService.UserService.InfoByOauthId(op, openid)
+		var autoRegister bool
+		user, autoRegister, err = service.AllService.UserService.InfoByOauthId(op, openid, identity)
+		if err != nil {
+			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{"message": "OauthExpired"})
+			return
+		}
 		if user == nil {
-			oauthConfig := oauthService.InfoByOp(op)
-			if !*oauthConfig.AutoRegister {
+			if !autoRegister {
 				//c.String(http.StatusInternalServerError, "还未绑定用户，请先绑定")
-				oauthCache.UpdateFromOauthUser(oauthUser)
-				c.Redirect(http.StatusFound, "/_admin/#/oauth/bind/"+cacheKey)
+				pending := *oauthCache
+				pending.UpdateFromOauthUser(oauthUser)
+				pending.ProviderIdentity = identity
+				if !oauthService.ReplaceOauthCache(cacheKey, oauthCache, &pending) {
+					c.HTML(http.StatusOK, "oauth_fail.html", gin.H{"message": "OauthExpired"})
+					return
+				}
+				if webAdmin {
+					c.Redirect(http.StatusFound, oauthCache.RedirectURL+"#/oauth/bind/"+cacheKey)
+				} else {
+					c.Redirect(http.StatusFound, "/_admin/#/oauth/bind/"+cacheKey)
+				}
 				return
 			}
 
 			//自动注册
-			err, user = service.AllService.UserService.RegisterByOauth(oauthUser, op)
+			err, user = service.AllService.UserService.RegisterByOauth(oauthUser, op, identity)
 			if err != nil {
+				message := err.Error()
+				if errors.Is(err, service.ErrOauthIdentityChanged) {
+					message = "OauthExpired"
+				}
 				c.HTML(http.StatusOK, "oauth_fail.html", gin.H{
-					"message": err.Error(),
+					"message": message,
 				})
 				return
 			}
 		}
-		oauthCache.UserId = user.Id
-		oauthService.SetOauthCache(cacheKey, oauthCache, 0)
-		// 如果是webadmin，登录成功后跳转到webadmin
-		if oauthCache.DeviceType == model.LoginLogClientWebAdmin {
-			/*service.AllService.UserService.Login(u, &model.LoginLog{
-				UserId:   u.Id,
-				Client:   "webadmin",
-				Uuid:     "", //must be empty
-				Ip:       c.ClientIP(),
-				Type:     model.LoginLogTypeOauth,
-				Platform: oauthService.DeviceOs,
-			})*/
-			c.Redirect(http.StatusFound, "/_admin/#/")
+		confirmed := *oauthCache
+		if webAdmin {
+			confirmed.Ticket = utils.RandomString(32)
+			if confirmed.Ticket == "" {
+				c.HTML(http.StatusOK, "oauth_fail.html", gin.H{"message": "OauthFailed"})
+				return
+			}
+		}
+		confirmed.UserId = user.Id
+		if !oauthService.ReplaceOauthCache(cacheKey, oauthCache, &confirmed) {
+			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{"message": "OauthExpired"})
+			return
+		}
+		if webAdmin {
+			c.Redirect(http.StatusFound, confirmed.RedirectURL+"#/login?oidc_ticket="+confirmed.Ticket)
 			return
 		}
 		c.HTML(http.StatusOK, "oauth_success.html", gin.H{
@@ -266,6 +321,14 @@ func (o *Oauth) OauthCallback(c *gin.Context) {
 		return
 	}
 
+}
+
+func oauthBindResult(c *gin.Context, redirectURL, message string) {
+	target := redirectURL + "#/my/oauth"
+	if message != "BindSuccess" {
+		target += "?binding_error=1"
+	}
+	c.Redirect(http.StatusFound, target)
 }
 
 type MessageParams struct {

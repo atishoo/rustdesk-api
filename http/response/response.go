@@ -53,6 +53,7 @@ type ServerConfigResponse struct {
 	Key         string `json:"key"`
 	RelayServer string `json:"relay_server"`
 	ApiServer   string `json:"api_server"`
+	MustLogin   *bool  `json:"must_login,omitempty"`
 }
 
 func TranslateMsg(c *gin.Context, messageId string) string {

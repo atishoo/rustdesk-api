@@ -88,33 +88,37 @@ func (ll *LoginLimiter) isDisabled() bool {
 
 // 记录登录失败尝试
 func (ll *LoginLimiter) RecordFailedAttempt(ip string) {
+	ll.ReserveAttempt(ip)
+}
+
+// ReserveAttempt atomically records an attempt and rejects keys that are already banned.
+func (ll *LoginLimiter) ReserveAttempt(key string) bool {
 	if ll.isDisabled() {
-		return
+		return true
 	}
 	ll.mu.Lock()
 	defer ll.mu.Unlock()
 
-	if banned, _ := ll.isBanned(ip); banned {
-		return
+	if banned, _ := ll.isBanned(key); banned {
+		return false
 	}
 
 	now := time.Now()
 	windowStart := now.Add(-ll.policy.AttemptsWindow)
 
 	// 清理过期尝试
-	validAttempts := ll.pruneAttempts(ip, windowStart)
+	validAttempts := ll.pruneAttempts(key, windowStart)
 
 	// 记录新尝试
 	validAttempts = append(validAttempts, now)
-	ll.attempts[ip] = validAttempts
+	ll.attempts[key] = validAttempts
 
 	// 检查封禁条件
 	if ll.policy.BanThreshold > 0 && len(validAttempts) >= ll.policy.BanThreshold {
-		ll.banIP(ip, "excessive failed attempts")
-		return
+		ll.banIP(key, "excessive failed attempts")
 	}
 
-	return
+	return true
 }
 
 // 生成验证码
@@ -206,7 +210,7 @@ func (ll *LoginLimiter) CheckSecurityStatus(ip string) (banned bool, captchaRequ
 	ll.pruneAttempts(ip, time.Now().Add(-ll.policy.AttemptsWindow))
 
 	// 检查验证码要求
-	captchaRequired = len(ll.attempts[ip]) >= ll.policy.CaptchaThreshold
+	captchaRequired = ll.policy.CaptchaThreshold >= 0 && len(ll.attempts[ip]) >= ll.policy.CaptchaThreshold
 
 	return
 }

@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"net/netip"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
@@ -16,6 +19,41 @@ type RustdeskCmd struct {
 	Cmd    string `json:"cmd"`
 	Option string `json:"option"`
 	Target string `json:"target"`
+}
+
+func validRustdeskCmd(cmd, target string) bool {
+	return strings.TrimSpace(cmd) != "" &&
+		(target == model.ServerCmdTargetIdServer || target == model.ServerCmdTargetRelayServer)
+}
+
+func normalizeRelayAddressOption(cmd, option string) (string, bool) {
+	addressOption := strings.TrimSpace(option)
+	switch cmd {
+	case "br", "Br", "blacklist-remove", "blocklist-remove":
+		if addressOption == "all" {
+			return "all", true
+		}
+	case "ba", "Ba", "blacklist-add", "blocklist-add":
+	case "b", "B", "blacklist", "blocklist":
+		if addressOption == "" {
+			return "", true
+		}
+		if strings.Contains(addressOption, "|") {
+			return "", false
+		}
+	default:
+		return option, true
+	}
+	addresses := strings.Split(addressOption, "|")
+	for i, value := range addresses {
+		value = strings.TrimSpace(value)
+		address, err := netip.ParseAddr(value)
+		if err != nil || address.Zone() != "" {
+			return "", false
+		}
+		addresses[i] = address.Unmap().String()
+	}
+	return strings.Join(addresses, "|"), true
 }
 
 func (r *Rustdesk) CmdList(c *gin.Context) {
@@ -64,9 +102,9 @@ func (r *Rustdesk) CmdCreate(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		response.Fail(c, 101, errList[0])
+	f.Cmd = strings.TrimSpace(f.Cmd)
+	if !validRustdeskCmd(f.Cmd, f.Target) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
 	err := service.AllService.ServerCmdService.Create(f)
@@ -83,9 +121,9 @@ func (r *Rustdesk) CmdUpdate(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		response.Fail(c, 101, errList[0])
+	f.Cmd = strings.TrimSpace(f.Cmd)
+	if !validRustdeskCmd(f.Cmd, f.Target) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
 	ex := service.AllService.ServerCmdService.Info(f.Id)
@@ -107,15 +145,8 @@ func (r *Rustdesk) SendCmd(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	if rc.Cmd == "" {
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
-		return
-	}
-	if rc.Target == "" {
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
-		return
-	}
-	if rc.Target != model.ServerCmdTargetIdServer && rc.Target != model.ServerCmdTargetRelayServer {
+	rc.Cmd = strings.TrimSpace(rc.Cmd)
+	if !validRustdeskCmd(rc.Cmd, rc.Target) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
@@ -125,6 +156,12 @@ func (r *Rustdesk) SendCmd(c *gin.Context) {
 	case model.ServerCmdTargetIdServer:
 		port = global.Config.Admin.IdServerPort - 1
 	case model.ServerCmdTargetRelayServer:
+		option, ok := normalizeRelayAddressOption(rc.Cmd, rc.Option)
+		if !ok {
+			response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+			return
+		}
+		rc.Option = option
 		port = global.Config.Admin.RelayServerPort
 	}
 
@@ -134,4 +171,18 @@ func (r *Rustdesk) SendCmd(c *gin.Context) {
 		return
 	}
 	response.Success(c, res)
+}
+
+func (r *Rustdesk) Status(c *gin.Context) {
+	relayStatus := make(chan bool, 1)
+	go func() {
+		help, err := service.AllService.ServerCmdService.SendCmd(global.Config.Admin.RelayServerPort, "h", "")
+		relayStatus <- err == nil && strings.HasPrefix(strings.TrimSpace(help), "blacklist-add(ba) ")
+	}()
+	idHelp, idErr := service.AllService.ServerCmdService.SendCmd(global.Config.Admin.IdServerPort-1, "h", "")
+	response.Success(c, gin.H{
+		"id_server":    idErr == nil && strings.HasPrefix(strings.TrimSpace(idHelp), "relay-servers(rs) "),
+		"relay_server": <-relayStatus,
+		"id_help":      idHelp,
+	})
 }

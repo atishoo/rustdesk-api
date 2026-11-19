@@ -79,7 +79,7 @@ Basic implementation of the PC client's primary interfaces.Supports the Personal
 ### Web Admin
 
 * The frontend and backend are separated to provide a user-friendly management interface, primarily for managing and
-displaying data.Frontend code is available at [rustdesk-api-web](https://github.com/lejianwen/rustdesk-api-web)
+displaying data. Build the console from the companion Web repository. [rustdesk-web](https://github.com/atishoo/rustdesk-web)
 
 * Admin panel URL: `http://<your server[:port]>/_admin/`
 * For the initial installation, the admin username is `admin`, and the password will be printed in the console. You can change the password via the [command line](#CLI).
@@ -116,7 +116,7 @@ displaying data.Frontend code is available at [rustdesk-api-web](https://github.
     * Custom commands can be added
     * Custom commands can be executed
 
-11. **LDAP Support**, When you setup the LDAP(test for OpenLDAP and AD), you can login with the LDAP's user. https://github.com/lejianwen/rustdesk-api/issues/114 , if LDAP fail fallback local user
+11. **LDAP support**. Once LDAP is configured on the API server, users can sign in with directory accounts (tested with AD and OpenLDAP). Before enabling `ldap.user.sync`, keep an enabled local administrator outside LDAP synchronization and verify that it can sign in independently. Synchronization applies directory administrator role removals even when only one administrator remains. If the directory verifies the credentials but the role lookup or synchronization fails, the sign-in is denied.
   
 ### Web Client:
 
@@ -125,6 +125,10 @@ displaying data.Frontend code is available at [rustdesk-api-web](https://github.
    pre-configured.
 3. After logging in, the ID server and key will be automatically synced.
 4. The address book will also be automatically saved to the web client for convenient use.
+
+The built-in `/webclient/` uses its own origin for account login and configuration. On a reverse proxy, forward `/webclient/`, `/webclient-config/`, and `/api/` under the same domain.
+
+Share links redeem through the Web Client origin at `/api/shared-peer` by default. If a standalone Web Client does not proxy that route, set `rustdesk.webclient-share-api-server` or `RUSTDESK_API_RUSTDESK_WEBCLIENT_SHARE_API_SERVER` to the API base URL, such as `https://api.example.com/rustdesk`. Serve or proxy `/webclient-config/index.js` to load the share redemption settings from that API. For a cross-origin deployment, allow the standalone Web Client origin on `/api/shared-peer` at your API gateway.
 
 ### Automated Documentation : API documentation is generated using Swag, making it easier for developers to understand and use the API.
 
@@ -152,6 +156,12 @@ displaying data.Frontend code is available at [rustdesk-api-web](https://github.
 * If `gorm.type` is set to `sqlite`, MySQL-related configurations are not required.
 * Language support: `en` and `zh-CN` are supported. The default is `zh-CN`.
 
+Password login through Vite's default same-origin proxy works with an empty origin allowlist. To call the API across origins during local development or use WebAuth or OIDC from Vite, explicitly list the development origin, such as `http://127.0.0.1:5174`, in the local API's `app.admin-origins` setting or `RUSTDESK_API_APP_ADMIN_ORIGINS` environment variable.
+
+Admin OAuth requests require an absolute `redirect_url`. Its origin must match the request origin and appear in `app.admin-origins` or match `rustdesk.api-server`. For same-origin reverse proxy deployments, preserve the original `Host`, set `X-Forwarded-Proto` to the public scheme, and list the immediate proxy address in `gin.trust-proxy` or `RUSTDESK_API_GIN_TRUST_PROXY`.
+
+Anonymous Web Client sharing requires `rustdesk.id-server`. For a public hostname, a proxy, or an external ID Server, set `rustdesk.must-login` or `RUSTDESK_API_RUSTDESK_MUST_LOGIN` to `true` or `false` to match the target's policy. A policy that requires login or cannot be confirmed blocks creating and redeeming anonymous shares. You can omit this setting to query the local ID Server when `rustdesk.id-server` uses `127.0.0.1` or `::1` and its port matches `admin.id-server-port`. The image built with `Dockerfile_full_s6` uses the startup `MUST_LOGIN` only after confirming that the local hbbs lacks the query command.
+
 
 ### Environment Variables
 The environment variables correspond one-to-one with the configurations in the `conf/config.yaml` file. The prefix for variable names is `RUSTDESK_API`.
@@ -162,13 +172,14 @@ The table below does not list all configurations. Please refer to the configurat
 | TZ                                                     | timezone                                                                                                                                            | Asia/Shanghai                 |
 | RUSTDESK_API_LANG                                      | Language                                                                                                                                            | `en`,`zh-CN`                  |
 | RUSTDESK_API_APP_WEB_CLIENT                            | web client on/off; 1: on, 0 off, default: 1                                                                                                         | 1                             |
+| RUSTDESK_API_APP_ADMIN_ORIGINS                         | Comma-separated trusted console origins. The list is empty by default. | `http://127.0.0.1:5174` |
 | RUSTDESK_API_APP_REGISTER                              | register enable; `true`, `false`; default:`false`                                                                                                   | `false`                       |
 | RUSTDESK_API_APP_SHOW_SWAGGER                          | swagger visible; 1: yes, 0: no; default: 0                                                                                                          | `0`                           |
 | RUSTDESK_API_APP_TOKEN_EXPIRE                          | token expire duration                                                                                                                               | `168h`                        |
 | RUSTDESK_API_APP_DISABLE_PWD_LOGIN                     | disable password login                                                                                                                              | `false`                       |
 | RUSTDESK_API_APP_REGISTER_STATUS                       | register user default status ; 1 enabled , 2 disabled ; default 1                                                                                   | `1`                           |
-| RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | captcha threshold; -1 disabled, 0 always enable, >0 threshold  ;default `3`                                                                         | `3`                           |
-| RUSTDESK_API_APP_BAN_THRESHOLD                         | ban ip threshold; 0 disabled, >0 threshold ; default `0`                                                                                            | `0`                           |
+| RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | Use -1 to disable CAPTCHA or 0 to always require it. A positive threshold must be lower than the ban threshold when both are enabled. | `-1` |
+| RUSTDESK_API_APP_BAN_THRESHOLD                         | Block password login and related requests for 30 minutes after this many failures from the same IP within 10 minutes. Use 0 to disable the ban. | `10` |
 | ----- ADMIN Configuration-----                         | ----------                                                                                                                                          | ----------                    |
 | RUSTDESK_API_ADMIN_TITLE                               | Admin Title                                                                                                                                         | `RustDesk Api Admin`          |
 | RUSTDESK_API_ADMIN_HELLO                               | Admin welcome message, you can use `html`                                                                                                           |                               |
@@ -229,7 +240,7 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/lejianwen/rustdesk-api.git
+   git clone https://github.com/atishoo/rustdesk-api.git
    cd rustdesk-api
    ```
 
@@ -241,17 +252,19 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
     go install github.com/swaggo/swag/cmd/swag@latest
     ```
 
-3. Build the admin front-end (the front-end code is
-   in [rustdesk-api-web](https://github.com/lejianwen/rustdesk-api-web)):
+3. Build the sibling console checkout with Node.js 22. [rustdesk-web](https://github.com/atishoo/rustdesk-web)
    ```bash
-   cd resources
-   mkdir -p admin
-   git clone https://github.com/lejianwen/rustdesk-api-web
-   cd rustdesk-api-web
-   npm install
-   npm run build
-   cp -ar dist/* ../admin/
+   (cd ../rustdesk-web && npm ci && npm run build)
+   mkdir -p resources/admin
+   cp -a ../rustdesk-web/dist/. resources/admin/
    ```
+   GitHub Actions builds `rustdesk-web/main` under the same owner by default. Use the repository variables `WEBCLIENT_REPOSITORY` and `WEBCLIENT_REF` to select a matching console revision. For a private console repository, set `RUSTDESK_WEB_READ_TOKEN` in the API repository with read access to the console contents. Publish the matching console revision before releasing the API.
+
+   To build the development image locally, run this from the API repository root.
+   ```bash
+   docker build -f Dockerfile.dev --build-context rustdesk-web=../rustdesk-web .
+   ```
+   For a branded client, set `VITE_NATIVE_CLIENT_SCHEME` to its registered protocol name in GitHub Actions repository variables, the Compose environment, or `docker build --build-arg`.
 
 4. Run:
     ```bash
@@ -274,6 +287,10 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
 
 6. Open your browser and visit `http://<your server[:port]>/_admin/`, with default credentials `admin admin`. Please
    change the password promptly.
+
+#### Running the full S6 image
+
+The release workflow's `full-s6` image includes the API, management console, and matching UltraPro Server. Publish the matching server image before building the API. Set the `RUSTDESK_SERVER_IMAGE` repository variable or Docker build argument to pin a server commit tag or digest. For a private GHCR base image, grant the API repository **Read** under the package's **Manage Actions access** settings.
 
 #### Running with my forked server-s6 image
 

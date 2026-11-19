@@ -23,6 +23,61 @@ description = "Item already exists."
 one = "Item already exists."
 other = "Item already exists."
 
+[InvalidAddressBookTags]
+description = "Address book tags must belong to the target collection"
+one = "Select existing tags from the target address book collection."
+other = "Select existing tags from the target address book collection."
+
+[ReferencedTagMove]
+description = "A tag in use cannot be moved"
+one = "Remove the tag from address book entries before moving it."
+other = "Remove the tag from address book entries before moving it."
+
+[DuplicatePeerID]
+description = "A selected ID matches multiple devices."
+one = "A selected ID matches multiple devices and cannot be added to the address book."
+other = "A selected ID matches multiple devices and cannot be added to the address book."
+
+[UnsupportedAddressBookPeerID]
+description = "Device ID contains connection target syntax"
+one = "A device ID that contains @, ends in a relay suffix, or would be interpreted as a direct address cannot be added directly to the address book."
+other = "A device ID that contains @, ends in a relay suffix, or would be interpreted as a direct address cannot be added directly to the address book."
+
+[WebClientExplicitServerTarget]
+description = "Web Client target contains a server address"
+one = "Web Client cannot connect to targets that specify a server. Use the native RustDesk client."
+other = "Web Client cannot connect to targets that specify a server. Use the native RustDesk client."
+
+[WebClientDirectTarget]
+description = "Web Client does not support direct addresses"
+one = "Web Client cannot connect to direct addresses. Use the native RustDesk client."
+other = "Web Client cannot connect to direct addresses. Use the native RustDesk client."
+
+[WebClientTargetWhitespace]
+description = "Web Client would change the device ID"
+one = "The Web Client would remove whitespace from this device ID. Check the ID in the address book."
+other = "The Web Client would remove whitespace from this device ID. Check the ID in the address book."
+
+[WebClientEmptyTarget]
+description = "A Web Client device ID is required"
+one = "Enter a device ID before using Web Client sharing."
+other = "Enter a device ID before using Web Client sharing."
+
+[WebClientShareRequiresLogin]
+description = "ID Server requires login"
+one = "The ID Server requires login, so anonymous Web Client sharing is unavailable."
+other = "The ID Server requires login, so anonymous Web Client sharing is unavailable."
+
+[WebClientLoginPolicyUnknown]
+description = "ID Server login requirement could not be confirmed"
+one = "The ID Server's login requirement could not be confirmed. Configure the policy for an external ID Server or try again later."
+other = "The ID Server's login requirement could not be confirmed. Configure the policy for an external ID Server or try again later."
+
+[WebClientMissingIDServer]
+description = "Web Client sharing requires an ID Server"
+one = "Configure an ID Server before using Web Client sharing."
+other = "Configure an ID Server before using Web Client sharing."
+
 [ItemNotFound]
 description = "Item not found."
 one = "Item not found."
@@ -81,6 +136,23 @@ other = "Bind fail."
 description = "Bind success."
 one = "Bind success."
 other = "Bind success."
+
+[LastLoginMethod]
+description = "Unbinding would remove the last login method."
+other = "Make sure you can sign in with a password, or bind another login provider before unbinding this account."
+
+[LdapUnbindPasswordRequired]
+other = "Enter the password you use to sign in before unbinding."
+
+[LdapUnbindVerificationFailed]
+other = "Unable to verify password sign-in. This account remains linked."
+
+[LdapUnbindRateLimited]
+other = "Password verification is temporarily limited. Please try again later."
+
+[OauthIdentityBound]
+other = "A login provider with linked accounts cannot be deleted or have its identity settings changed."
+
 [OauthHasBeenSuccess]
 description = "Oauth has been success."
 one = "Oauth has been success."
@@ -119,6 +191,16 @@ other = "Old password error."
 description = "Default group"
 one = "Default Group"
 other = "Default Group"
+
+[DefaultUserGroupCannotDelete]
+description = "Registration group cannot be deleted"
+one = "The default registration group cannot be deleted."
+other = "The default registration group cannot be deleted."
+
+[UserGroupInUse]
+description = "User group is in use"
+one = "This group cannot be deleted while users or sharing rules still reference it."
+other = "This group cannot be deleted while users or sharing rules still reference it."
 
 [ShareGroup]
 description = "Share group"

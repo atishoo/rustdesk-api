@@ -126,8 +126,17 @@ func (abc *AddressBookCollection) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	t := f //f.ToAddressBookCollection()
-	err := service.AllService.AddressBookService.UpdateCollection(t)
+	collections := service.AllService.AddressBookService
+	existing := collections.CollectionInfoById(f.Id)
+	if existing.Id == 0 {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
+	if f.UserId != 0 && f.UserId != existing.UserId {
+		response.Fail(c, 101, response.TranslateMsg(c, "NoAccess"))
+		return
+	}
+	err := collections.UpdateCollection(f)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

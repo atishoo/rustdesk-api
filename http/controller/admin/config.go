@@ -29,6 +29,7 @@ func (co *Config) ServerConfig(c *gin.Context) {
 		Key:         global.Config.Rustdesk.Key,
 		RelayServer: global.Config.Rustdesk.RelayServer,
 		ApiServer:   global.Config.Rustdesk.ApiServer,
+		MustLogin:   global.Config.Rustdesk.MustLogin,
 	}
 	response.Success(c, cf)
 }

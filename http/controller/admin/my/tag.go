@@ -1,6 +1,7 @@
 package my
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
@@ -70,7 +71,15 @@ func (ct *Tag) Create(c *gin.Context) {
 	t := f.ToTag()
 	u := service.AllService.UserService.CurUser(c)
 	t.UserId = u.Id
+	if t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
 	err := service.AllService.TagService.Create(t)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return
@@ -125,7 +134,15 @@ func (ct *Tag) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	err := service.AllService.TagService.Update(t)
+	err := service.AllService.TagService.Update(ex, t)
+	if errors.Is(err, service.ErrReferencedTagMove) {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
+		return
+	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

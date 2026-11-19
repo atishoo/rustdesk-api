@@ -1,12 +1,14 @@
 package admin
 
 import (
+	"errors"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/service"
-	"strconv"
 )
 
 type Group struct {
@@ -151,6 +153,10 @@ func (ct *Group) Delete(c *gin.Context) {
 		err := service.AllService.GroupService.Delete(u)
 		if err == nil {
 			response.Success(c, nil)
+			return
+		}
+		if errors.Is(err, service.ErrDefaultUserGroup) || errors.Is(err, service.ErrUserGroupInUse) {
+			response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
 			return
 		}
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())

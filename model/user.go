@@ -1,5 +1,10 @@
 package model
 
+type NativeLoginCredentials struct {
+	Username string `json:"username" validate:"required,gte=2,lte=32" label:"用户名"`
+	Password string `json:"password,omitempty" validate:"gte=4,lte=32" label:"密码"`
+}
+
 type User struct {
 	IdModel
 	Username string `json:"username" gorm:"default:'';not null;uniqueIndex"`

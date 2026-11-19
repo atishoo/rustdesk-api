@@ -45,6 +45,47 @@ definitions:
     required:
     - id
     type: object
+  admin.AddressBookUpdateForm:
+    properties:
+      alias:
+        type: string
+      collection_id:
+        type: integer
+      forceAlwaysRelay:
+        type: boolean
+      hash:
+        type: string
+      hostname:
+        type: string
+      id:
+        type: string
+      loginName:
+        type: string
+      online:
+        type: boolean
+      password:
+        type: string
+      platform:
+        type: string
+      rdpPort:
+        type: string
+      rdpUsername:
+        type: string
+      row_id:
+        type: integer
+      sameServer:
+        type: boolean
+      tags:
+        items:
+          type: string
+        type: array
+      user_id:
+        type: integer
+      username:
+        type: string
+    required:
+    - row_id
+    type: object
   admin.AuditConnLogIds:
     properties:
       ids:
@@ -70,12 +111,10 @@ definitions:
         minLength: 4
         type: string
       old_password:
-        maxLength: 32
-        minLength: 4
+        description: 已设置本地密码时必填
         type: string
     required:
     - new_password
-    - old_password
     type: object
   admin.DeviceGroupForm:
     properties:
@@ -112,6 +151,8 @@ definitions:
         type: string
       email:
         type: string
+      id:
+        type: integer
       nickname:
         type: string
       route_names:
@@ -191,6 +232,48 @@ definitions:
     required:
     - ids
     type: object
+  admin.PersonalAddressBookUpdateForm:
+    properties:
+      alias:
+        type: string
+      collection_id:
+        type: integer
+      forceAlwaysRelay:
+        type: boolean
+      hash:
+        type: string
+      hostname:
+        type: string
+      id:
+        type: string
+      loginName:
+        type: string
+      online:
+        type: boolean
+      password:
+        type: string
+      platform:
+        type: string
+      rdpPort:
+        type: string
+      rdpUsername:
+        type: string
+      row_id:
+        type: integer
+      sameServer:
+        type: boolean
+      tags:
+        items:
+          type: string
+        type: array
+      user_id:
+        type: integer
+      username:
+        type: string
+    required:
+    - row_id
+    - user_id
+    type: object
   admin.ShareByWebClientForm:
     properties:
       expire:
@@ -205,10 +288,14 @@ definitions:
         - once
         - fixed
         type: string
+      row_id:
+        minimum: 1
+        type: integer
     required:
     - id
     - password
     - password_type
+    - row_id
     type: object
   admin.ShareRecordForm:
     properties:
@@ -252,7 +339,9 @@ definitions:
       status:
         allOf:
         - $ref: '#/definitions/model.StatusCode'
-        minimum: 0
+        enum:
+        - 1
+        - 2
       username:
         maxLength: 32
         minLength: 2
@@ -280,6 +369,20 @@ definitions:
     required:
     - id
     - password
+    type: object
+  admin.UserStatusForm:
+    properties:
+      id:
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/model.StatusCode'
+        enum:
+        - 1
+        - 2
+    required:
+    - id
+    - status
     type: object
   admin.UserTokenBatchDeleteForm:
     properties:
@@ -310,12 +413,18 @@ definitions:
     properties:
       alias:
         type: string
+      ambiguous_id:
+        description: 优先使用经登录关联或管理员登记的设备。实际目标仍有多个候选时为 true。
+        type: boolean
       collection:
         $ref: '#/definitions/model.AddressBookCollection'
       collection_id:
         type: integer
       created_at:
         type: string
+      direct_target:
+        description: 裸 IP 或域名端口直连目标，仅在控制台列表返回。
+        type: boolean
       forceAlwaysRelay:
         type: boolean
       hash:
@@ -628,10 +737,16 @@ definitions:
     type: object
   model.Peer:
     properties:
+      ambiguous_id:
+        description: 仅凭 ID 无法定位到此设备，仅在设备列表返回
+        type: boolean
       cpu:
         type: string
       created_at:
         type: string
+      direct_target:
+        description: 裸 IP 或域名端口直连目标，仅在控制台列表返回。
+        type: boolean
       group_id:
         type: integer
       hostname:
@@ -975,7 +1090,7 @@ paths:
       summary: 地址簿列表
       tags:
       - 地址簿
-  /admin/address_book/share:
+  /admin/address_book/shareByWebClient:
     post:
       consumes:
       - application/json
@@ -1007,14 +1122,14 @@ paths:
     post:
       consumes:
       - application/json
-      description: 地址簿编辑
+      description: 仅更新提交的地址簿字段。
       parameters:
       - description: 地址簿信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/admin.AddressBookForm'
+          $ref: '#/definitions/admin.AddressBookUpdateForm'
       produces:
       - application/json
       responses:
@@ -2313,14 +2428,14 @@ paths:
     post:
       consumes:
       - application/json
-      description: 地址簿编辑
+      description: 仅更新提交的地址簿字段。
       parameters:
       - description: 地址簿信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/admin.AddressBookForm'
+          $ref: '#/definitions/admin.PersonalAddressBookUpdateForm'
       produces:
       - application/json
       responses:
@@ -3154,10 +3269,22 @@ paths:
       tags:
       - Oauth
   /admin/oidc/auth-query:
-    get:
+    post:
       consumes:
       - application/json
       description: OidcAuthQuery
+      parameters:
+      - description: 授权状态和票据
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            code:
+              type: string
+            ticket:
+              type: string
       produces:
       - application/json
       responses:
@@ -3209,7 +3336,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建设备
+      description: 设备 ID 和 UUID 均必填，每项最多 256 字节。
       parameters:
       - description: 设备信息
         in: body
@@ -3353,7 +3480,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 设备编辑
+      description: 设备 ID 和 UUID 各最多 256 字节。更新 UUID 时必须提供非空值。
       parameters:
       - description: 设备信息
         in: body
@@ -3914,6 +4041,29 @@ paths:
       security:
       - token: []
       summary: 修改密码
+      tags:
+      - 用户
+  /admin/user/updateStatus:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户状态
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.UserStatusForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - token: []
+      summary: 启用或停用用户
       tags:
       - 用户
   /admin/user_token/batchDelete:

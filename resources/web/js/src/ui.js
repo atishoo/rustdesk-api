@@ -33,22 +33,22 @@ if (app) {
 
   document.body.onload = () => {
     const host = document.querySelector('#host');
-    host.value = localStorage.getItem('custom-rendezvous-server');
+    host.value = window.getByName('option', 'custom-rendezvous-server');
     const id = document.querySelector('#id');
     id.value = localStorage.getItem('id');
     const key = document.querySelector('#key');
-    key.value = localStorage.getItem('key');
+    key.value = window.getByName('option', 'key');
     player = YUVCanvas.attach(document.getElementById('player'));
     // globals.sendOffCanvas(document.getElementById('player'));
   };
 
   window.connect = () => {
     const host = document.querySelector('#host');
-    localStorage.setItem('custom-rendezvous-server', host.value);
+    window.setByName('option', JSON.stringify({ name: 'custom-rendezvous-server', value: host.value }));
     const id = document.querySelector('#id');
     localStorage.setItem('id', id.value);
     const key = document.querySelector('#key');
-    localStorage.setItem('key', key.value);
+    window.setByName('option', JSON.stringify({ name: 'key', value: key.value }));
     const func = async () => {
       const conn = globals.newConn();
       conn.setMsgbox(msgbox);

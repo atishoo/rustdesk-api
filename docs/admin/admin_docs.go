@@ -301,7 +301,7 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "/admin/address_book/share": {
+        "/admin/address_book/shareByWebClient": {
             "post": {
                 "security": [
                     {
@@ -353,7 +353,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "地址簿编辑",
+                "description": "仅更新提交的地址簿字段。",
                 "consumes": [
                     "application/json"
                 ],
@@ -371,7 +371,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/admin.AddressBookForm"
+                            "$ref": "#/definitions/admin.AddressBookUpdateForm"
                         }
                     }
                 ],
@@ -2536,7 +2536,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "地址簿编辑",
+                "description": "仅更新提交的地址簿字段。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2554,7 +2554,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/admin.AddressBookForm"
+                            "$ref": "#/definitions/admin.PersonalAddressBookUpdateForm"
                         }
                     }
                 ],
@@ -3942,7 +3942,7 @@ const docTemplateadmin = `{
             }
         },
         "/admin/oidc/auth-query": {
-            "get": {
+            "post": {
                 "description": "OidcAuthQuery",
                 "consumes": [
                     "application/json"
@@ -3954,6 +3954,21 @@ const docTemplateadmin = `{
                     "Oauth"
                 ],
                 "summary": "OidcAuthQuery",
+                "parameters": [
+                    {
+                        "description": "授权状态和票据",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": { "type": "string" },
+                                "ticket": { "type": "string" }
+                            }
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -4034,7 +4049,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "创建设备",
+                "description": "设备 ID 和 UUID 均必填，每项最多 256 字节。",
                 "consumes": [
                     "application/json"
                 ],
@@ -4275,7 +4290,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "设备编辑",
+                "description": "设备 ID 和 UUID 各最多 256 字节。更新 UUID 时必须提供非空值。",
                 "consumes": [
                     "application/json"
                 ],
@@ -5220,6 +5235,44 @@ const docTemplateadmin = `{
                 }
             }
         },
+        "/admin/user/updateStatus": {
+            "post": {
+                "security": [
+                    {
+                        "token": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "启用或停用用户",
+                "parameters": [
+                    {
+                        "description": "用户状态",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.UserStatusForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/user_token/batchDelete": {
             "post": {
                 "security": [
@@ -5446,6 +5499,68 @@ const docTemplateadmin = `{
                 }
             }
         },
+        "admin.AddressBookUpdateForm": {
+            "type": "object",
+            "required": [
+                "row_id"
+            ],
+            "properties": {
+                "alias": {
+                    "type": "string"
+                },
+                "collection_id": {
+                    "type": "integer"
+                },
+                "forceAlwaysRelay": {
+                    "type": "boolean"
+                },
+                "hash": {
+                    "type": "string"
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "loginName": {
+                    "type": "string"
+                },
+                "online": {
+                    "type": "boolean"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "rdpPort": {
+                    "type": "string"
+                },
+                "rdpUsername": {
+                    "type": "string"
+                },
+                "row_id": {
+                    "type": "integer"
+                },
+                "sameServer": {
+                    "type": "boolean"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "admin.AuditConnLogIds": {
             "type": "object",
             "required": [
@@ -5477,8 +5592,7 @@ const docTemplateadmin = `{
         "admin.ChangeCurPasswordForm": {
             "type": "object",
             "required": [
-                "new_password",
-                "old_password"
+                "new_password"
             ],
             "properties": {
                 "new_password": {
@@ -5487,9 +5601,8 @@ const docTemplateadmin = `{
                     "minLength": 4
                 },
                 "old_password": {
-                    "type": "string",
-                    "maxLength": 32,
-                    "minLength": 4
+                    "description": "已设置本地密码时必填",
+                    "type": "string"
                 }
             }
         },
@@ -5546,6 +5659,9 @@ const docTemplateadmin = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "id": {
+                    "type": "integer"
                 },
                 "nickname": {
                     "type": "string"
@@ -5667,12 +5783,76 @@ const docTemplateadmin = `{
                 }
             }
         },
+        "admin.PersonalAddressBookUpdateForm": {
+            "type": "object",
+            "required": [
+                "row_id",
+                "user_id"
+            ],
+            "properties": {
+                "alias": {
+                    "type": "string"
+                },
+                "collection_id": {
+                    "type": "integer"
+                },
+                "forceAlwaysRelay": {
+                    "type": "boolean"
+                },
+                "hash": {
+                    "type": "string"
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "loginName": {
+                    "type": "string"
+                },
+                "online": {
+                    "type": "boolean"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "rdpPort": {
+                    "type": "string"
+                },
+                "rdpUsername": {
+                    "type": "string"
+                },
+                "row_id": {
+                    "type": "integer"
+                },
+                "sameServer": {
+                    "type": "boolean"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "admin.ShareByWebClientForm": {
             "type": "object",
             "required": [
                 "id",
                 "password",
-                "password_type"
+                "password_type",
+                "row_id"
             ],
             "properties": {
                 "expire": {
@@ -5691,6 +5871,10 @@ const docTemplateadmin = `{
                         "once",
                         "fixed"
                     ]
+                },
+                "row_id": {
+                    "type": "integer",
+                    "minimum": 1
                 }
             }
         },
@@ -5758,7 +5942,10 @@ const docTemplateadmin = `{
                     "type": "string"
                 },
                 "status": {
-                    "minimum": 0,
+                    "enum": [
+                        1,
+                        2
+                    ],
                     "allOf": [
                         {
                             "$ref": "#/definitions/model.StatusCode"
@@ -5797,6 +5984,29 @@ const docTemplateadmin = `{
                     "type": "string",
                     "maxLength": 32,
                     "minLength": 4
+                }
+            }
+        },
+        "admin.UserStatusForm": {
+            "type": "object",
+            "required": [
+                "id",
+                "status"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "enum": [
+                        1,
+                        2
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.StatusCode"
+                        }
+                    ]
                 }
             }
         },
@@ -5844,6 +6054,10 @@ const docTemplateadmin = `{
                 "alias": {
                     "type": "string"
                 },
+                "ambiguous_id": {
+                    "description": "优先使用经登录关联或管理员登记的设备。实际目标仍有多个候选时为 true。",
+                    "type": "boolean"
+                },
                 "collection": {
                     "$ref": "#/definitions/model.AddressBookCollection"
                 },
@@ -5852,6 +6066,10 @@ const docTemplateadmin = `{
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "direct_target": {
+                    "description": "裸 IP 或域名端口直连目标，仅在控制台列表返回。",
+                    "type": "boolean"
                 },
                 "forceAlwaysRelay": {
                     "type": "boolean"
@@ -6323,11 +6541,19 @@ const docTemplateadmin = `{
         "model.Peer": {
             "type": "object",
             "properties": {
+                "ambiguous_id": {
+                    "description": "仅凭 ID 无法定位到此设备，仅在设备列表返回",
+                    "type": "boolean"
+                },
                 "cpu": {
                     "type": "string"
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "direct_target": {
+                    "description": "裸 IP 或域名端口直连目标，仅在控制台列表返回。",
+                    "type": "boolean"
                 },
                 "group_id": {
                     "type": "integer"

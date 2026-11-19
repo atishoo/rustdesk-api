@@ -4,11 +4,27 @@ import {loadVp9} from "./codec";
 import {checkIfRetry, version} from "./gen_js_from_hbb";
 import {initZstd, translate} from "./common";
 import PCMPlayer from "pcm-player";
-import {getServerConf} from "./ljw";
+import {clearWebClientAccount, getServerConf, getWebClientNetworkOption, managedLaunch, ordinaryNetworkOptions, setWebClientAccountApi, sharedLaunch, sharedTarget} from "./ljw";
 
-window.myconsole = (...args) => {
-    console.log(args);
+const scopedOptionFields = {
+    access_token: null,
+    access_token_deployment: null,
+    user_info: null,
+    verifier: null,
+    'api-server': 'api',
+    'wc-api-server': 'api',
+    'custom-rendezvous-server': 'server',
+    'rendezvous-server': 'server',
+    'relay-server': 'relay',
+    key: 'key',
+};
+const scopedLaunch = managedLaunch || sharedLaunch;
+let accountApiChanging = false;
+
+function resolveWebClientApi(apiServer) {
+    return apiServer || sessionStorage.getItem('webclient-config-api-server') || location.origin;
 }
+
 window.curConn = undefined;
 window.isMobile = () => {
     return /(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|ipad|iris|kindle|Android|Silk|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(navigator.userAgent)
@@ -182,10 +198,13 @@ export function decrypt(signed, nonce, key) {
 }
 
 window.setByName = (name, value) => {
-    myconsole('setByName', name, value);
+    if (name === 'login' && sharedLaunch) return;
+    if (name === 'remove' && scopedLaunch) return;
+    const option = name === 'option' || name === 'option:local' ? JSON.parse(value) : null;
+    if (option && scopedLaunch && Object.hasOwn(scopedOptionFields, option.name)) return;
     switch (name) {
         case 'remote_id':
-            localStorage.setItem('remote-id', value);
+            if (!scopedLaunch) localStorage.setItem('remote-id', value);
             break;
         case 'connect':
             newConn();
@@ -223,7 +242,7 @@ window.setByName = (name, value) => {
         case 'remove':
             const peers = getPeers();
             delete peers[value];
-            localStorage.setItem('peers', JSON.stringify(peers));
+            sessionStorage.setItem('peers', JSON.stringify(peers));
             break;
         case 'input_key':
             value = JSON.parse(value);
@@ -258,13 +277,43 @@ window.setByName = (name, value) => {
             }
             curConn.inputMouse(mask, parseInt(value.x || '0'), parseInt(value.y || '0'), value.alt == 'true', value.ctrl == 'true', value.shift == 'true', value.command == 'true');
             break;
-        case 'option':
-            value = JSON.parse(value);
-            localStorage.setItem(value.name, value.value);
-            if (value.name === 'access_token' && value.value) {
-                getServerConf(value.value);
+        case 'option:local':
+        case 'option': {
+            if (option.name === 'api-server') {
+                const apiServer = resolveWebClientApi(option.value);
+                if (apiServer !== sessionStorage.getItem('api-server')) {
+                    accountApiChanging = true;
+                    setWebClientAccountApi(apiServer);
+                    setTimeout(() => location.reload(), 0);
+                }
+                break;
+            }
+            if (option.name === 'access_token' || option.name === 'access_token_deployment' || option.name === 'user_info') {
+                if (!accountApiChanging) {
+                    if (option.name === 'access_token') {
+                        if ((sessionStorage.getItem('access_token') || '') !== option.value) {
+                            close();
+                            clearWebClientAccount();
+                        }
+                        if (option.value) {
+                            sessionStorage.setItem(option.name, option.value);
+                            getServerConf(option.value);
+                        }
+                    } else {
+                        sessionStorage.setItem(option.name, option.value);
+                    }
+                }
+            } else if (ordinaryNetworkOptions.has(option.name)) {
+                if (option.name !== 'relay-server' && getWebClientNetworkOption(option.name) !== option.value) {
+                    sessionStorage.removeItem('peers');
+                }
+                if (option.name === 'key' || option.value) sessionStorage.setItem(option.name, option.value);
+                else sessionStorage.removeItem(option.name);
+            } else {
+                localStorage.setItem(option.name, option.value);
             }
             break;
+        }
         case 'peer_option':
             value = JSON.parse(value);
             curConn.setOption(value.name, value.value);
@@ -278,8 +327,7 @@ window.setByName = (name, value) => {
 }
 
 window.getByName = (name, arg) => {
-    let v = _getByName(name, arg);
-    myconsole('getByName', name, arg, v);
+    const v = _getByName(name, arg);
     if (typeof v == 'string' || v instanceof String) return v;
     if (v == undefined || v == null) return '';
     return JSON.stringify(v);
@@ -300,19 +348,43 @@ function getPeersForDart() {
 function _getByName(name, arg) {
     switch (name) {
         case 'peers':
-            return getPeersForDart();
+            return scopedLaunch ? [] : getPeersForDart();
         case 'remote_id':
-            return localStorage.getItem('remote-id');
+            if (sharedLaunch) return sharedTarget?.id;
+            return managedLaunch ? window.rustdeskManagedTarget?.id : localStorage.getItem('remote-id');
         case 'remember':
             return curConn.getRemember();
         case 'toggle_option':
             return curConn.getOption(arg) || false;
+        case 'api_server':
+            if (arg == null) return _getByName('option', 'api-server');
+            try {
+                const preview = JSON.parse(arg);
+                if (Array.isArray(preview) && preview.length === 2 && preview.every(value => typeof value === 'string')) {
+                    return { url: scopedLaunch ? _getByName('option', 'api-server') : resolveWebClientApi(preview[0]) };
+                }
+            } catch { /* Return a structured error to the configuration dialog. */ }
+            return { error: 'Invalid API server settings' };
+        case 'option:local':
         case 'option':
-            const v = localStorage.getItem(arg);
-            if (arg === 'access_token' && v) {
-                getServerConf(v);
+            if (scopedLaunch && Object.hasOwn(scopedOptionFields, arg)) {
+                const field = scopedOptionFields[arg];
+                const target = sharedLaunch ? sharedTarget : window.rustdeskManagedTarget;
+                if (!field || !target) return '';
+                if (field === 'api') return (sharedLaunch && window.rustdeskWebClientApiServer) || location.origin;
+                return target[field] ?? '';
             }
-            return v;
+            if (arg === 'api-server' || arg === 'wc-api-server') {
+                return resolveWebClientApi(sessionStorage.getItem('api-server'));
+            }
+            if (arg === 'access_token' || arg === 'access_token_deployment' || arg === 'user_info') {
+                if (accountApiChanging) return '';
+                const value = sessionStorage.getItem(arg);
+                if (arg === 'access_token' && value) getServerConf(value);
+                return value;
+            }
+            if (ordinaryNetworkOptions.has(arg)) return getWebClientNetworkOption(arg);
+            return localStorage.getItem(arg);
         case 'image_quality':
             return curConn.getImageQuality();
         case 'translate':
@@ -357,7 +429,7 @@ window.init = async () => {
 
 export function getPeers() {
     try {
-        return JSON.parse(localStorage.getItem('peers')) || {};
+        return JSON.parse(sessionStorage.getItem('peers')) || {};
     } catch (e) {
         return {};
     }

@@ -99,24 +99,27 @@ func (g *Group) Peers(c *gin.Context) {
 	for _, group := range allGroup.DeviceGroups {
 		dGroupNameById[group.Id] = group.Name
 	}
-	peerList := service.AllService.PeerService.ListByUserIds(userIds, q.Page, q.PageSize)
-	data := make([]*apiResp.GroupPeerPayload, 0, len(peerList.Peers))
-	for _, peer := range peerList.Peers {
-		uname, ok := namesById[peer.UserId]
-		if !ok {
-			uname = ""
-		}
-		dGroupName, ok2 := dGroupNameById[peer.GroupId]
-		if !ok2 {
-			dGroupName = ""
+	page := q.Page
+	if page == 0 {
+		page = q.Current
+	}
+	peers, total, err := service.AllService.PeerService.ListGroupPeers(userIds, page, q.PageSize)
+	if err != nil {
+		response.Error(c, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
+	}
+	data := make([]*apiResp.GroupPeerPayload, 0, len(peers))
+	for _, peer := range peers {
+		var dGroupName string
+		if peer.GroupId != nil {
+			dGroupName = dGroupNameById[*peer.GroupId]
 		}
 		pp := &apiResp.GroupPeerPayload{}
-		pp.FromPeer(peer, uname, dGroupName)
+		pp.FromPeer(peer, namesById[peer.UserId], dGroupName)
 		data = append(data, pp)
-
 	}
 	c.JSON(http.StatusOK, response.DataResponse{
-		Total: uint(peerList.Total),
+		Total: uint(total),
 		Data:  data,
 	})
 }

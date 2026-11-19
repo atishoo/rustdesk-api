@@ -1,5 +1,7 @@
 package api
 
+import "github.com/lejianwen/rustdesk-api/v2/model"
+
 /*
 *
 
@@ -29,13 +31,12 @@ type DeviceInfoInLogin struct {
 }
 
 type LoginForm struct {
-	AutoLogin  bool              `json:"autoLogin" label:"自动登录"`
-	DeviceInfo DeviceInfoInLogin `json:"deviceInfo" label:"设备信息"`
-	Id         string            `json:"id"  label:"id"`
-	Type       string            `json:"type"  label:"type"`
-	Uuid       string            `json:"uuid"  label:"uuid"`
-	Username   string            `json:"username" validate:"required,gte=2,lte=32" label:"用户名"`
-	Password   string            `json:"password,omitempty" validate:"gte=4,lte=32" label:"密码"`
+	AutoLogin  bool                 `json:"autoLogin" label:"自动登录"`
+	DeviceInfo DeviceInfoInLogin    `json:"deviceInfo" label:"设备信息"`
+	Id         model.DeviceIdentity `json:"id"  label:"id"`
+	Type       string               `json:"type"  label:"type"`
+	Uuid       model.DeviceIdentity `json:"uuid"  label:"uuid"`
+	model.NativeLoginCredentials
 }
 
 type UserListQuery struct {
@@ -47,6 +48,7 @@ type UserListQuery struct {
 
 type PeerListQuery struct {
 	Page       uint   `json:"page" form:"page" validate:"required" label:"页码"`
+	Current    uint   `form:"current"`
 	PageSize   uint   `json:"pageSize" form:"pageSize" validate:"required" label:"每页数量"`
 	Status     int    `json:"status" form:"status" label:"状态"`
 	Accessible string `json:"accessible" form:"accessible"`

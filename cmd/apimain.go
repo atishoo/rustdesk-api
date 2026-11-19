@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const DatabaseVersion = 265
+const DatabaseVersion = 266
 
 // @title 管理系统API
 // @version 1.0
@@ -256,13 +256,17 @@ func DatabaseAutoUpdate() {
 	}
 
 	if !db.Migrator().HasTable(&model.Version{}) {
-		Migrate(uint(version))
+		if err := Migrate(uint(version)); err != nil {
+			global.Logger.Fatalf("database migration failed: %v", err)
+		}
 	} else {
 		//查找最后一个version
 		var v model.Version
 		db.Last(&v)
 		if v.Version < uint(version) {
-			Migrate(uint(version))
+			if err := Migrate(uint(version)); err != nil {
+				global.Logger.Fatalf("database migration failed: %v", err)
+			}
 		}
 
 		// 245迁移
@@ -286,9 +290,9 @@ func DatabaseAutoUpdate() {
 	}
 
 }
-func Migrate(version uint) {
+func Migrate(version uint) error {
 	global.Logger.Info("Migrating....", version)
-	err := global.DB.AutoMigrate(
+	if err := global.DB.AutoMigrate(
 		&model.Version{},
 		&model.User{},
 		&model.UserToken{},
@@ -299,18 +303,32 @@ func Migrate(version uint) {
 		&model.UserThird{},
 		&model.Oauth{},
 		&model.LoginLog{},
-		&model.ShareRecord{},
 		&model.AuditConn{},
 		&model.AuditFile{},
 		&model.AddressBookCollection{},
 		&model.AddressBookCollectionRule{},
 		&model.ServerCmd{},
 		&model.DeviceGroup{},
-	)
-	if err != nil {
-		global.Logger.Error("migrate err :=>", err)
+	); err != nil {
+		return err
 	}
-	global.DB.Create(&model.Version{Version: version})
+	const shareRecordComment = "'Web Client 分享及对应的地址簿条目'"
+	shareDB := global.DB
+	dialect := shareDB.Dialector.Name()
+	if dialect == "mysql" {
+		shareDB = shareDB.Set("gorm:table_options", " COMMENT = "+shareRecordComment)
+	}
+	if err := shareDB.AutoMigrate(&model.ShareRecord{}); err != nil {
+		return err
+	}
+	if dialect == "postgres" {
+		if err := shareDB.Exec("COMMENT ON TABLE share_records IS " + shareRecordComment).Error; err != nil {
+			return err
+		}
+	}
+	if err := global.DB.Create(&model.Version{Version: version}).Error; err != nil {
+		return err
+	}
 	//如果是初次则创建一个默认用户
 	var vc int64
 	global.DB.Model(&model.Version{}).Count(&vc)
@@ -340,7 +358,7 @@ func Migrate(version uint) {
 			Nickname: "Admin",
 			Status:   model.COMMON_STATUS_ENABLE,
 			IsAdmin:  &is_admin,
-			GroupId:  1,
+			GroupId:  model.DefaultUserGroupID,
 		}
 
 		// 生成随机密码
@@ -353,5 +371,5 @@ func Migrate(version uint) {
 		}
 		global.DB.Create(admin)
 	}
-
+	return nil
 }
