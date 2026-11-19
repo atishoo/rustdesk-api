@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    # UltraPro branch pushes build deployable artifacts automatically.
+    # Pushes to ultrapro build deployable artifacts automatically.
     branches:
       - ultrapro
     tags:
