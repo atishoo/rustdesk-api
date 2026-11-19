@@ -162,7 +162,7 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 
 管理端 OAuth 请求须携带绝对 `redirect_url`，其来源须与请求来源一致，并已在 `app.admin-origins` 或 `rustdesk.api-server` 中配置。同源反向代理需保留原始 `Host`，将 `X-Forwarded-Proto` 设为公网协议，并在 `gin.trust-proxy` 或 `RUSTDESK_API_GIN_TRUST_PROXY` 中登记 API 的直接代理地址。
 
-匿名 Web Client 分享需要配置 `rustdesk.id-server`。使用公网域名、代理或外部 ID Server 时，请按实际目标的策略将 `rustdesk.must-login` 或 `RUSTDESK_API_RUSTDESK_MUST_LOGIN` 设为 `true` 或 `false`。`true` 或无法确认的策略均会阻止创建和兑换匿名分享。只有 `rustdesk.id-server` 为 `127.0.0.1` 或 `::1` 且端口与 `admin.id-server-port` 一致时，才能省略策略并查询本机实例。通过 `Dockerfile_full_s6` 构建的镜像在确认本机 hbbs 不支持查询命令后，才使用启动时的 `MUST_LOGIN`。
+匿名 Web Client 分享需要配置 `rustdesk.id-server`。使用公网域名、代理或外部 ID Server 时，请按实际目标的策略将 `rustdesk.must-login` 或 `RUSTDESK_API_RUSTDESK_MUST_LOGIN` 设为 `true` 或 `false`。`true` 或无法确认的策略均会阻止创建和兑换匿名分享。只有 `rustdesk.id-server` 为 `127.0.0.1` 或 `::1` 且端口与 `admin.id-server-port` 一致时，才能省略策略并查询本机实例。
 
 ### 环境变量
 环境变量和配置文件`conf/config.yaml`中的配置一一对应，变量名前缀是`RUSTDESK_API`
@@ -286,11 +286,9 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 6. 打开浏览器访问`http://<your server[:port]>/_admin/`，默认用户名密码为`admin`，请及时更改密码。
 
 
-#### 使用全量 S6 镜像
+#### 使用 UltraPro API + Web 镜像
 
-发布工作流的 `full-s6` 镜像包含 API、控制台和配套的 UltraPro Server。先发布配套 Server 镜像，再构建 API。可用 Actions 仓库变量或 Docker 构建参数 `RUSTDESK_SERVER_IMAGE` 固定 Server 镜像的提交标签或摘要。若 GHCR 配套镜像为私有，在该包的 **Manage Actions access** 中为 API 仓库授予 **Read** 权限，供工作流拉取。
-
-UltraPro 分支构建完成后，可直接部署多架构镜像 `ghcr.io/atishoo/rustdesk-api:full-s6`。GHCR 包为私有时，先执行 `docker login ghcr.io`，再使用该镜像和现有 Compose 配置启动服务。
+UltraPro 分支构建完成后，可直接部署多架构镜像 `ghcr.io/atishoo/rustdesk-api:ultrapro`。镜像包含 API 和管理控制台。ID Server 与 Relay Server 使用独立的 `ghcr.io/atishoo/rustdesk-server:ultrapro` 镜像。GHCR 包为私有时，先执行 `docker login ghcr.io`，再使用这两个镜像和现有 Compose 配置启动服务。
 
 #### 使用`lejianwen/server-s6`镜像运行
 

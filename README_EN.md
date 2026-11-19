@@ -160,7 +160,7 @@ Password login through Vite's default same-origin proxy works with an empty orig
 
 Admin OAuth requests require an absolute `redirect_url`. Its origin must match the request origin and appear in `app.admin-origins` or match `rustdesk.api-server`. For same-origin reverse proxy deployments, preserve the original `Host`, set `X-Forwarded-Proto` to the public scheme, and list the immediate proxy address in `gin.trust-proxy` or `RUSTDESK_API_GIN_TRUST_PROXY`.
 
-Anonymous Web Client sharing requires `rustdesk.id-server`. For a public hostname, a proxy, or an external ID Server, set `rustdesk.must-login` or `RUSTDESK_API_RUSTDESK_MUST_LOGIN` to `true` or `false` to match the target's policy. A policy that requires login or cannot be confirmed blocks creating and redeeming anonymous shares. You can omit this setting to query the local ID Server when `rustdesk.id-server` uses `127.0.0.1` or `::1` and its port matches `admin.id-server-port`. The image built with `Dockerfile_full_s6` uses the startup `MUST_LOGIN` only after confirming that the local hbbs lacks the query command.
+Anonymous Web Client sharing requires `rustdesk.id-server`. For a public hostname, a proxy, or an external ID Server, set `rustdesk.must-login` or `RUSTDESK_API_RUSTDESK_MUST_LOGIN` to `true` or `false` to match the target's policy. A policy that requires login or cannot be confirmed blocks creating and redeeming anonymous shares. You can omit this setting to query the local ID Server when `rustdesk.id-server` uses `127.0.0.1` or `::1` and its port matches `admin.id-server-port`.
 
 
 ### Environment Variables
@@ -288,9 +288,9 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
 6. Open your browser and visit `http://<your server[:port]>/_admin/`, with default credentials `admin admin`. Please
    change the password promptly.
 
-#### Running the full S6 image
+#### Running the UltraPro API + Web image
 
-The release workflow's `full-s6` image includes the API, management console, and matching UltraPro Server. Publish the matching server image before building the API. Set the `RUSTDESK_SERVER_IMAGE` repository variable or Docker build argument to pin a server commit tag or digest. For a private GHCR base image, grant the API repository **Read** under the package's **Manage Actions access** settings.
+After the UltraPro branch build completes, deploy the multi-architecture image `ghcr.io/atishoo/rustdesk-api:ultrapro`. It contains the API and management console. Run ID Server and Relay Server separately with `ghcr.io/atishoo/rustdesk-server:ultrapro`. For private GHCR packages, run `docker login ghcr.io` before starting the existing Compose deployment.
 
 #### Running with my forked server-s6 image
 
