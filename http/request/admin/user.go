@@ -77,10 +77,22 @@ type GroupUsersQuery struct {
 }
 
 type RegisterForm struct {
-	Username        string `json:"username" validate:"required,gte=2,lte=32"`
-	Email           string `json:"email"` // validate:"required,email"
+	Email           string `json:"email" validate:"required,email"`
 	Password        string `json:"password" validate:"required,gte=4,lte=32"`
 	ConfirmPassword string `json:"confirm_password" validate:"required,gte=4,lte=32"`
+	Code            string `json:"code" validate:"required,len=6,numeric"`
+}
+
+type EmailCodeForm struct {
+	Email   string `json:"email" validate:"required,email"`
+	Purpose string `json:"purpose" validate:"required,oneof=register reset_password"`
+}
+
+type ResetPasswordForm struct {
+	Email           string `json:"email" validate:"required,email"`
+	Password        string `json:"password" validate:"required,gte=4,lte=32"`
+	ConfirmPassword string `json:"confirm_password" validate:"required,gte=4,lte=32"`
+	Code            string `json:"code" validate:"required,len=6,numeric"`
 }
 
 type UserTokenBatchDeleteForm struct {

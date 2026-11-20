@@ -82,7 +82,7 @@ Basic implementation of the PC client's primary interfaces.Supports the Personal
 displaying data. Build the console from the companion Web repository. [rustdesk-web](https://github.com/atishoo/rustdesk-web)
 
 * Admin panel URL: `http://<your server[:port]>/_admin/`
-* For the initial installation, the admin username is `admin`, and the password will be printed in the console. You can change the password via the [command line](#CLI).
+* A fresh installation does not create a preset administrator. With registration enabled, the first account that completes email verification becomes the super administrator.
 
   ![img.png](./docs/init_admin_pwd.png)
 
@@ -173,13 +173,18 @@ The table below does not list all configurations. Please refer to the configurat
 | RUSTDESK_API_LANG                                      | Language                                                                                                                                            | `en`,`zh-CN`                  |
 | RUSTDESK_API_APP_WEB_CLIENT                            | web client on/off; 1: on, 0 off, default: 1                                                                                                         | 1                             |
 | RUSTDESK_API_APP_ADMIN_ORIGINS                         | Comma-separated trusted console origins. The list is empty by default. | `http://127.0.0.1:5174` |
-| RUSTDESK_API_APP_REGISTER                              | register enable; `true`, `false`; default:`false`                                                                                                   | `false`                       |
+| RUSTDESK_API_APP_REGISTER                              | email verification registration; `true`, `false`; default:`true`                                                                                   | `true`                        |
 | RUSTDESK_API_APP_SHOW_SWAGGER                          | swagger visible; 1: yes, 0: no; default: 0                                                                                                          | `0`                           |
 | RUSTDESK_API_APP_TOKEN_EXPIRE                          | token expire duration                                                                                                                               | `168h`                        |
 | RUSTDESK_API_APP_DISABLE_PWD_LOGIN                     | disable password login                                                                                                                              | `false`                       |
 | RUSTDESK_API_APP_REGISTER_STATUS                       | register user default status ; 1 enabled , 2 disabled ; default 1                                                                                   | `1`                           |
 | RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | Use -1 to disable CAPTCHA or 0 to always require it. A positive threshold must be lower than the ban threshold when both are enabled. | `-1` |
 | RUSTDESK_API_APP_BAN_THRESHOLD                         | Block password login and related requests for 30 minutes after this many failures from the same IP within 10 minutes. Use 0 to disable the ban. | `10` |
+| RUSTDESK_API_SMTP_HOST                                 | SMTP server address                                                                                                                                 | `smtp.aliyun.com`             |
+| RUSTDESK_API_SMTP_USER                                 | SMTP username                                                                                                                                       | `easyvcode@aliyun.com`        |
+| RUSTDESK_API_SMTP_PASSWORD                             | SMTP password                                                                                                                                       |                               |
+| RUSTDESK_API_SMTP_PORT                                 | SMTP port                                                                                                                                           | `465`                         |
+| RUSTDESK_API_SMTP_CRYPTO                               | SMTP encryption mode, use `ssl` for port 465                                                                                                        | `ssl`                         |
 | ----- ADMIN Configuration-----                         | ----------                                                                                                                                          | ----------                    |
 | RUSTDESK_API_ADMIN_TITLE                               | Admin Title                                                                                                                                         | `RustDesk Api Admin`          |
 | RUSTDESK_API_ADMIN_HELLO                               | Admin welcome message, you can use `html`                                                                                                           |                               |
@@ -285,8 +290,7 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
    compiling, the corresponding executables will be generated in the `release` directory. Run the compiled executables
    directly.
 
-6. Open your browser and visit `http://<your server[:port]>/_admin/`, with default credentials `admin admin`. Please
-   change the password promptly.
+6. Open `http://<your server[:port]>/_admin/` and complete email verification registration. The first registered account becomes the super administrator.
 
 #### Running the UltraPro API + Web image
 

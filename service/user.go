@@ -60,7 +60,8 @@ func (us *UserService) InfoByUsernamePassword(username, password string) *model.
 		Logger.Warn("Fallback to local database")
 	}
 	u := &model.User{}
-	DB.Where("username = ?", username).First(u)
+	login := strings.ToLower(strings.TrimSpace(username))
+	DB.Where("username = ? OR email = ?", username, login).First(u)
 	if u.Id == 0 {
 		return u
 	}
@@ -457,6 +458,13 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string, id
 			return nil
 		}
 		if user.Id == 0 {
+			var count int64
+			if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
+				return err
+			}
+			isAdmin := count == 0
+			user.IsAdmin = &isAdmin
+			user.Status = model.COMMON_STATUS_ENABLE
 			if err := tx.Create(user).Error; err != nil {
 				return errors.New("OauthRegisterFailed")
 			}

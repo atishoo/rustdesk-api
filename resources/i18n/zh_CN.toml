@@ -213,6 +213,41 @@ description = "Register closed."
 one = "注册已关闭。"
 other = "注册已关闭。"
 
+[InvalidEmail]
+description = "Invalid email address."
+one = "邮箱地址无效。"
+other = "邮箱地址无效。"
+
+[InvalidEmailCodePurpose]
+description = "Invalid email code purpose."
+one = "验证码用途无效。"
+other = "验证码用途无效。"
+
+[EmailExists]
+description = "Email already exists."
+one = "该邮箱已注册。"
+other = "该邮箱已注册。"
+
+[EmailCodeTooFrequent]
+description = "Email code requested too frequently."
+one = "验证码发送过于频繁，请稍后再试。"
+other = "验证码发送过于频繁，请稍后再试。"
+
+[EmailCodeInvalid]
+description = "Invalid email verification code."
+one = "邮箱验证码无效或已过期。"
+other = "邮箱验证码无效或已过期。"
+
+[PasswordNotMatch]
+description = "Passwords do not match."
+one = "两次输入的密码不一致。"
+other = "两次输入的密码不一致。"
+
+[SMTPNotConfigured]
+description = "SMTP is not configured."
+one = "SMTP 邮件服务尚未配置。"
+other = "SMTP 邮件服务尚未配置。"
+
 [CaptchaRequired]
 description = "Captcha required."
 one = "需要验证码。"

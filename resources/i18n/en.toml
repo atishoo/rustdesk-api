@@ -211,6 +211,41 @@ description = "Register closed."
 one = "Register closed."
 other = "Register closed."
 
+[InvalidEmail]
+description = "Invalid email address."
+one = "Invalid email address."
+other = "Invalid email address."
+
+[InvalidEmailCodePurpose]
+description = "Invalid email code purpose."
+one = "Invalid email code purpose."
+other = "Invalid email code purpose."
+
+[EmailExists]
+description = "Email already exists."
+one = "This email is already registered."
+other = "This email is already registered."
+
+[EmailCodeTooFrequent]
+description = "Email code requested too frequently."
+one = "Verification code requests are too frequent. Try again later."
+other = "Verification code requests are too frequent. Try again later."
+
+[EmailCodeInvalid]
+description = "Invalid email verification code."
+one = "The email verification code is invalid or expired."
+other = "The email verification code is invalid or expired."
+
+[PasswordNotMatch]
+description = "Passwords do not match."
+one = "The passwords do not match."
+other = "The passwords do not match."
+
+[SMTPNotConfigured]
+description = "SMTP is not configured."
+one = "SMTP email service is not configured."
+other = "SMTP email service is not configured."
+
 [CaptchaRequired]
 description = "Captcha required."
 one = "Captcha required."

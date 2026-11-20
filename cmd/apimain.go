@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const DatabaseVersion = 266
+const DatabaseVersion = 267
 
 // @title 管理系统API
 // @version 1.0
@@ -312,6 +312,19 @@ func Migrate(version uint) error {
 	); err != nil {
 		return err
 	}
+	codeDB := global.DB
+	codeComment := "'邮箱注册及找回密码验证码'"
+	if codeDB.Dialector.Name() == "mysql" {
+		codeDB = codeDB.Set("gorm:table_options", " COMMENT = "+codeComment)
+	}
+	if err := codeDB.AutoMigrate(&model.EmailCode{}); err != nil {
+		return err
+	}
+	if codeDB.Dialector.Name() == "postgres" {
+		if err := codeDB.Exec("COMMENT ON TABLE email_codes IS " + codeComment).Error; err != nil {
+			return err
+		}
+	}
 	const shareRecordComment = "'Web Client 分享及对应的地址簿条目'"
 	shareDB := global.DB
 	dialect := shareDB.Dialector.Name()
@@ -329,7 +342,7 @@ func Migrate(version uint) error {
 	if err := global.DB.Create(&model.Version{Version: version}).Error; err != nil {
 		return err
 	}
-	//如果是初次则创建一个默认用户
+	//首次安装只创建默认分组，首个管理员由邮箱注册流程创建。
 	var vc int64
 	global.DB.Model(&model.Version{}).Count(&vc)
 	if vc == 1 {
@@ -351,25 +364,6 @@ func Migrate(version uint) error {
 			Type: model.GroupTypeShare,
 		}
 		service.AllService.GroupService.Create(groupShare)
-		//是true
-		is_admin := true
-		admin := &model.User{
-			Username: "admin",
-			Nickname: "Admin",
-			Status:   model.COMMON_STATUS_ENABLE,
-			IsAdmin:  &is_admin,
-			GroupId:  model.DefaultUserGroupID,
-		}
-
-		// 生成随机密码
-		pwd := utils.RandomString(8)
-		global.Logger.Info("Admin Password Is: ", pwd)
-		var err error
-		admin.Password, err = utils.EncryptPassword(pwd)
-		if err != nil {
-			global.Logger.Fatalf("failed to generate admin password: %v", err)
-		}
-		global.DB.Create(admin)
 	}
 	return nil
 }

@@ -22,7 +22,9 @@ func Init(g *gin.Engine) {
 	adg := g.Group("/api/admin")
 	adg.OPTIONS("/*path", func(c *gin.Context) {})
 	LoginBind(adg)
+	adg.POST("/user/email-code", (&admin.User{}).EmailCode)
 	adg.POST("/user/register", (&admin.User{}).Register)
+	adg.POST("/user/reset-password", (&admin.User{}).ResetPassword)
 
 	ConfigBind(adg)
 

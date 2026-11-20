@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
@@ -343,6 +345,24 @@ func (ct *User) GroupUsers(c *gin.Context) {
 	})
 }
 
+// EmailCode sends a one-time verification code for registration or password reset.
+func (ct *User) EmailCode(c *gin.Context) {
+	f := &admin.EmailCodeForm{}
+	if err := c.ShouldBindJSON(f); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
+		return
+	}
+	if errList := global.Validator.ValidStruct(c, f); len(errList) > 0 {
+		response.Fail(c, 101, errList[0])
+		return
+	}
+	if err := service.SendEmailCode(f.Email, f.Purpose); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	response.Success(c, nil)
+}
+
 // Register
 func (ct *User) Register(c *gin.Context) {
 	if !global.Config.App.Register {
@@ -359,18 +379,27 @@ func (ct *User) Register(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
+	f.Email = strings.ToLower(strings.TrimSpace(f.Email))
+	if f.Password != f.ConfirmPassword {
+		response.Fail(c, 101, response.TranslateMsg(c, "PasswordNotMatch"))
+		return
+	}
 	regStatus := model.StatusCode(global.Config.App.RegisterStatus)
 	// 注册状态可能未配置，默认启用
 	if regStatus != model.COMMON_STATUS_DISABLED && regStatus != model.COMMON_STATUS_ENABLE {
 		regStatus = model.COMMON_STATUS_ENABLE
 	}
 
-	u := service.AllService.UserService.Register(f.Username, f.Email, f.Password, regStatus)
-	if u == nil || u.Id == 0 {
-		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+	u, err := service.AllService.UserService.RegisterByEmail(f.Email, f.Password, f.Code, regStatus)
+	if err != nil || u == nil || u.Id == 0 {
+		if err != nil {
+			response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		} else {
+			response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+		}
 		return
 	}
-	if regStatus == model.COMMON_STATUS_DISABLED {
+	if regStatus == model.COMMON_STATUS_DISABLED && (u.IsAdmin == nil || !*u.IsAdmin) {
 		// 需要管理员审核
 		response.Success(c, gin.H{"pending": true})
 		return
@@ -388,4 +417,27 @@ func (ct *User) Register(c *gin.Context) {
 		return
 	}
 	responseLoginSuccess(c, u, ut.Token)
+}
+
+// ResetPassword resets a local account password after email verification.
+func (ct *User) ResetPassword(c *gin.Context) {
+	f := &admin.ResetPasswordForm{}
+	if err := c.ShouldBindJSON(f); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
+		return
+	}
+	if errList := global.Validator.ValidStruct(c, f); len(errList) > 0 {
+		response.Fail(c, 101, errList[0])
+		return
+	}
+	f.Email = strings.ToLower(strings.TrimSpace(f.Email))
+	if f.Password != f.ConfirmPassword {
+		response.Fail(c, 101, response.TranslateMsg(c, "PasswordNotMatch"))
+		return
+	}
+	if err := service.AllService.UserService.ResetPasswordByEmail(f.Email, f.Password, f.Code); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	response.Success(c, nil)
 }

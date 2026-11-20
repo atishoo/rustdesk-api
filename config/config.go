@@ -35,10 +35,18 @@ type Admin struct {
 	IdServerPort    int    `mapstructure:"id-server-port"`
 	RelayServerPort int    `mapstructure:"relay-server-port"`
 }
+type SMTP struct {
+	Host     string `mapstructure:"host"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Port     int    `mapstructure:"port"`
+	Crypto   string `mapstructure:"crypto"`
+}
 type Config struct {
 	Lang       string `mapstructure:"lang"`
 	App        App
 	Admin      Admin
+	SMTP       SMTP `mapstructure:"smtp"`
 	Gorm       Gorm
 	Mysql      Mysql
 	Postgresql Postgresql
