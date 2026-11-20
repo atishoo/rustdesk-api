@@ -45,13 +45,13 @@ other = "A device ID that contains @, ends in a relay suffix, or would be interp
 
 [WebClientExplicitServerTarget]
 description = "Web Client target contains a server address"
-one = "Web Client cannot connect to targets that specify a server. Use the native RustDesk client."
-other = "Web Client cannot connect to targets that specify a server. Use the native RustDesk client."
+one = "Web Client cannot connect to targets that specify a server. Use the native capylink client."
+other = "Web Client cannot connect to targets that specify a server. Use the native capylink client."
 
 [WebClientDirectTarget]
 description = "Web Client does not support direct addresses"
-one = "Web Client cannot connect to direct addresses. Use the native RustDesk client."
-other = "Web Client cannot connect to direct addresses. Use the native RustDesk client."
+one = "Web Client cannot connect to direct addresses. Use the native capylink client."
+other = "Web Client cannot connect to direct addresses. Use the native capylink client."
 
 [WebClientTargetWhitespace]
 description = "Web Client would change the device ID"

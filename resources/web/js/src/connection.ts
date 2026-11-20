@@ -26,8 +26,8 @@ type SharedTarget = ConnectionTarget & { passwordBase64: string | undefined; opt
 
 declare global {
   interface Window {
-    rustdeskManagedTarget?: ConnectionTarget;
-    rustdeskWebClientRelayTarget?: RelayTarget;
+    capylinkManagedTarget?: ConnectionTarget;
+    capylinkWebClientRelayTarget?: RelayTarget;
   }
 }
 
@@ -86,7 +86,7 @@ export default class Connection {
 
   async _start(id: string) {
     const generation = ++this._startGeneration;
-    const managedTarget = window.rustdeskManagedTarget;
+    const managedTarget = window.capylinkManagedTarget;
     if (managedLaunch && (!id || !managedTarget || managedTarget.id !== id)) throw new Error("受管 Web Client 配置不可用");
     if (sharedLaunch) {
       if (!sharedTarget || sharedTarget.id !== id) throw new Error("分享链接不可用或连接目标无效");
@@ -933,7 +933,7 @@ function getDefaultUri(isRelay = false): string {
   return getWebClientUri(host, isRelay);
 }
 
-function getPublishedRelayTarget(uri: URL, target = window.rustdeskWebClientRelayTarget): RelayTarget | undefined {
+function getPublishedRelayTarget(uri: URL, target = window.capylinkWebClientRelayTarget): RelayTarget | undefined {
   if (!target || !matchesRendezvous(uri, target.server)) return undefined;
   try {
     if (target.relay) getWebClientUri(target.relay, true, true);

@@ -16,7 +16,7 @@ func (i *Index) Index(c *gin.Context) {
 }
 
 func (i *Index) ConfigJs(c *gin.Context) {
-	config := global.Config.Rustdesk
+	config := global.Config.Capylink
 	apiServer, _ := json.Marshal(config.ApiServer)
 	shareApiServer, _ := json.Marshal(config.WebclientShareApiServer)
 	idServer, _ := json.Marshal(config.IdServer)
@@ -24,15 +24,15 @@ func (i *Index) ConfigJs(c *gin.Context) {
 	key, _ := json.Marshal(config.Key)
 	wsHost, _ := json.Marshal(config.WsHost)
 	script := fmt.Sprintf(`const webClientApiServer = %s;
-window.rustdeskWebClientApiServer = %s;
+window.capylinkWebClientApiServer = %s;
 const webClientServer = { server: %s, relay: %s };
 const webClientBuiltIn = window.location.pathname === '/webclient/';
 const webClientLaunch = new URLSearchParams(window.location.hash.startsWith('#/?') ? window.location.hash.slice(3) : '');
 const webClientGuest = webClientLaunch.has('share_token');
 const webClientManaged = !webClientGuest && webClientLaunch.get('managed') === '1';
 if (!webClientGuest && !webClientManaged) {
-    window.rustdeskWebClientAccountApiServer = webClientBuiltIn ? window.location.origin : webClientApiServer;
-    window.rustdeskWebClientRelayTarget = webClientServer;
+    window.capylinkWebClientAccountApiServer = webClientBuiltIn ? window.location.origin : webClientApiServer;
+    window.capylinkWebClientRelayTarget = webClientServer;
 }
 
 window.webclient_magic_queryonline = %d;
@@ -41,7 +41,7 @@ window.ws_host = %s;
 if (webClientBuiltIn && webClientManaged) {
     const id = webClientLaunch.get('id');
     if (id) {
-        window.rustdeskManagedTarget = { id, ...webClientServer, key: %s };
+        window.capylinkManagedTarget = { id, ...webClientServer, key: %s };
     }
 }
 `, apiServer, shareApiServer, idServer, relayServer, config.WebclientMagicQueryonline, wsHost, key)

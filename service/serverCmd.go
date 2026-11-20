@@ -87,17 +87,17 @@ func (is *ServerCmdService) sendCmdToLoopback(port int, cmd, arg, host string, f
 
 // CheckAnonymousWebClientShare checks the configured ID Server's login policy.
 func (is *ServerCmdService) CheckAnonymousWebClientShare() error {
-	if strings.TrimSpace(Config.Rustdesk.IdServer) == "" {
+	if strings.TrimSpace(Config.Capylink.IdServer) == "" {
 		return ErrWebClientMissingIDServer
 	}
-	if mustLogin := Config.Rustdesk.MustLogin; mustLogin != nil {
+	if mustLogin := Config.Capylink.MustLogin; mustLogin != nil {
 		if *mustLogin {
 			return ErrWebClientShareRequiresLogin
 		}
 		return nil
 	}
 	port := Config.Admin.IdServerPort
-	host, rawPort, err := net.SplitHostPort(addressBookServerKey(Config.Rustdesk.IdServer))
+	host, rawPort, err := net.SplitHostPort(addressBookServerKey(Config.Capylink.IdServer))
 	if err != nil || (host != "127.0.0.1" && host != "::1") {
 		return ErrWebClientLoginPolicyUnknown
 	}
@@ -115,7 +115,7 @@ func (is *ServerCmdService) CheckAnonymousWebClientShare() error {
 	case "MUST_LOGIN: true":
 		return ErrWebClientShareRequiresLogin
 	}
-	if os.Getenv("RUSTDESK_API_S6_LOCAL_CONTROL") != "1" {
+	if os.Getenv("CAPYLINK_API_S6_LOCAL_CONTROL") != "1" {
 		return ErrWebClientLoginPolicyUnknown
 	}
 	// Older bundled ID Servers do not implement ml. Only use the startup

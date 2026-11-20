@@ -37,9 +37,9 @@ func (i *WebClient) ServerConfig(c *gin.Context) {
 	response.Success(
 		c,
 		gin.H{
-			"id_server":    global.Config.Rustdesk.IdServer,
-			"relay_server": global.Config.Rustdesk.RelayServer,
-			"key":          global.Config.Rustdesk.Key,
+			"id_server":    global.Config.Capylink.IdServer,
+			"relay_server": global.Config.Capylink.RelayServer,
+			"key":          global.Config.Capylink.Key,
 			"peers":        peers,
 		},
 	)
@@ -91,9 +91,9 @@ func (i *WebClient) SharedPeer(c *gin.Context) {
 	pp.Info.Username = ab.Username
 	pp.Info.Hostname = ab.Hostname
 	response.Success(c, gin.H{
-		"id_server":    global.Config.Rustdesk.IdServer,
-		"relay_server": global.Config.Rustdesk.RelayServer,
-		"key":          global.Config.Rustdesk.Key,
+		"id_server":    global.Config.Capylink.IdServer,
+		"relay_server": global.Config.Capylink.RelayServer,
+		"key":          global.Config.Capylink.Key,
 		"peer":         pp,
 	})
 }
@@ -112,8 +112,8 @@ func (i *WebClient) ServerConfigV2(c *gin.Context) {
 	response.Success(
 		c,
 		gin.H{
-			"id_server": global.Config.Rustdesk.IdServer,
-			"key":       global.Config.Rustdesk.Key,
+			"id_server": global.Config.Capylink.IdServer,
+			"key":       global.Config.Capylink.Key,
 		},
 	)
 }

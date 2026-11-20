@@ -1390,7 +1390,7 @@ const docTemplateadmin = `{
                 "tags": [
                     "ADMIN"
                 ],
-                "summary": "RUSTDESK服务配置",
+                "summary": "卡皮远控服务配置",
                 "responses": {
                     "200": {
                         "description": "OK",

@@ -45,13 +45,13 @@ other = "设备原始 ID 包含 @、中继后缀或会被识别为直连地址�
 
 [WebClientExplicitServerTarget]
 description = "Web Client 不支持显式服务器目标"
-one = "Web Client 不支持带服务器地址的设备目标，请使用 RustDesk 原生客户端。"
-other = "Web Client 不支持带服务器地址的设备目标，请使用 RustDesk 原生客户端。"
+one = "Web Client 不支持带服务器地址的设备目标，请使用 卡皮远控 原生客户端。"
+other = "Web Client 不支持带服务器地址的设备目标，请使用 卡皮远控 原生客户端。"
 
 [WebClientDirectTarget]
 description = "Web Client 不支持裸直连目标"
-one = "Web Client 不支持直连地址，请使用 RustDesk 原生客户端。"
-other = "Web Client 不支持直连地址，请使用 RustDesk 原生客户端。"
+one = "Web Client 不支持直连地址，请使用 卡皮远控 原生客户端。"
+other = "Web Client 不支持直连地址，请使用 卡皮远控 原生客户端。"
 
 [WebClientTargetWhitespace]
 description = "Web Client 会改变设备 ID"

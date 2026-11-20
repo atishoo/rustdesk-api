@@ -1,6 +1,6 @@
-# RustDesk API
+# capylink API
 
-This project implements the RustDesk API using Go, and includes both a web UI and web client. RustDesk is a remote
+This project implements the capylink API using Go, and includes both a web UI and web client. capylink is a remote
 desktop software that provides self-hosted solutions.
 
 <div align=center>
@@ -13,7 +13,7 @@ desktop software that provides self-hosted solutions.
 </div>
 
 ## Better used with [lejianwen/rustdesk-server].
-> [lejianwen/rustdesk-server] is a fork of the official RustDesk Server repository.
+> [lejianwen/rustdesk-server] is a fork of the upstream RustDesk Server repository.
 > 1. Solves the API connection timeout issue.
 > 2. Can enforce login before initiating a connection.
 > 3. Supports client websocket.
@@ -57,40 +57,21 @@ desktop software that provides self-hosted solutions.
 ## Overview
 
 ### API Service
-Basic implementation of the PC client's primary interfaces.Supports the Personal version api, which can be enabled by configuring the `rustdesk.personal` file or the `RUSTDESK_API_RUSTDESK_PERSONAL` environment variable.
+Basic implementation of the PC client's primary interfaces.Supports the Personal version api, which can be enabled by configuring the `capylink.personal` file or the `CAPYLINK_API_CAPYLINK_PERSONAL` environment variable.
 
-<table>
-    <tr>
-      <td width="50%" align="center" colspan="2"><b>Login</b></td>
-    </tr>
-    <tr>
-        <td width="50%" align="center" colspan="2"><img src="docs/en_img/pc_login.png"></td>
-    </tr>
-     <tr>
-      <td width="50%" align="center"><b>Address Book</b></td>
-      <td width="50%" align="center"><b>Groups</b></td>
-    </tr>
-    <tr>
-        <td width="50%" align="center"><img src="docs/en_img/pc_ab.png"></td>
-        <td width="50%" align="center"><img src="docs/en_img/pc_gr.png"></td>
-    </tr>
-</table>
+Configure the deployment API address, then sign in from the client account page. After signing in, use address books and device groups to access authorized devices.
 
 ### Web Admin
 
 * The frontend and backend are separated to provide a user-friendly management interface, primarily for managing and
-displaying data. Build the console from the companion Web repository. [rustdesk-web](https://github.com/atishoo/rustdesk-web)
+displaying data. Build the console from the companion Web repository. [capylink-web](https://github.com/atishoo/rustdesk-web)
 
 * Admin panel URL: `http://<your server[:port]>/_admin/`
 * A fresh installation does not create a preset administrator. With registration enabled, the first account that completes email verification becomes the super administrator.
 
-  ![img.png](./docs/init_admin_pwd.png)
 
-
-1. Admin interface:
-   ![web_admin](docs/en_img/web_admin.png)
-2. Regular user interface:
-   ![web_user](docs/en_img/web_admin_user.png)
+1. Administrators can use the sidebar to manage users, devices, address books, and service configuration.
+2. Regular users can view their devices, address books, shares, and login logs.
 
 3. Each user can have multiple address books, which can also be shared with other users.
 4. Groups can be customized for easy management. Currently, two types are supported: `shared group` and `regular group`.
@@ -107,14 +88,11 @@ displaying data. Build the console from the companion Web repository. [rustdesk-
 7. Login logs
 8. Connection logs
 9. File transfer logs
-10. Server control
-  - `Simple mode`, some simple commands have been GUI-ized and can be executed directly in the backend
-    ![rustdesk_command_simple](./docs/en_img/rustdesk_command_simple.png)
+10. Service configuration and commands
 
-  - `Advanced mode`, commands can be executed directly in the backend
-    * Official commands can be used
-    * Custom commands can be added
-    * Custom commands can be executed
+    - **Service configuration**: Open **服务配置** in the sidebar to inspect the API, ID Server, Relay Server, and console settings.
+    - **Simple commands**: Open **服务命令** → **简单** to read or update service parameters using forms.
+    - **Advanced commands**: Open **服务命令** → **高级** to select a target service, send commands, and manage custom commands.
 
 11. **LDAP support**. Once LDAP is configured on the API server, users can sign in with directory accounts (tested with AD and OpenLDAP). Before enabling `ldap.user.sync`, keep an enabled local administrator outside LDAP synchronization and verify that it can sign in independently. Synchronization applies directory administrator role removals even when only one administrator remains. If the directory verifies the credentials but the role lookup or synchronization fails, the sign-in is denied.
   
@@ -128,7 +106,7 @@ displaying data. Build the console from the companion Web repository. [rustdesk-
 
 The built-in `/webclient/` uses its own origin for account login and configuration. On a reverse proxy, forward `/webclient/`, `/webclient-config/`, and `/api/` under the same domain.
 
-Share links redeem through the Web Client origin at `/api/shared-peer` by default. If a standalone Web Client does not proxy that route, set `rustdesk.webclient-share-api-server` or `RUSTDESK_API_RUSTDESK_WEBCLIENT_SHARE_API_SERVER` to the API base URL, such as `https://api.example.com/rustdesk`. Serve or proxy `/webclient-config/index.js` to load the share redemption settings from that API. For a cross-origin deployment, allow the standalone Web Client origin on `/api/shared-peer` at your API gateway.
+Share links redeem through the Web Client origin at `/api/shared-peer` by default. If a standalone Web Client does not proxy that route, set `capylink.webclient-share-api-server` or `CAPYLINK_API_CAPYLINK_WEBCLIENT_SHARE_API_SERVER` to the API base URL, such as `https://api.example.com/capylink`. Serve or proxy `/webclient-config/index.js` to load the share redemption settings from that API. For a cross-origin deployment, allow the standalone Web Client origin on `/api/shared-peer` at your API gateway.
 
 ### Automated Documentation : API documentation is generated using Swag, making it easier for developers to understand and use the API.
 
@@ -156,63 +134,65 @@ Share links redeem through the Web Client origin at `/api/shared-peer` by defaul
 * If `gorm.type` is set to `sqlite`, MySQL-related configurations are not required.
 * Language support: `en` and `zh-CN` are supported. The default is `zh-CN`.
 
-Password login through Vite's default same-origin proxy works with an empty origin allowlist. To call the API across origins during local development or use WebAuth or OIDC from Vite, explicitly list the development origin, such as `http://127.0.0.1:5174`, in the local API's `app.admin-origins` setting or `RUSTDESK_API_APP_ADMIN_ORIGINS` environment variable.
+Password login through Vite's default same-origin proxy works with an empty origin allowlist. To call the API across origins during local development or use WebAuth or OIDC from Vite, explicitly list the development origin, such as `http://127.0.0.1:5174`, in the local API's `app.admin-origins` setting or `CAPYLINK_API_APP_ADMIN_ORIGINS` environment variable.
 
-Admin OAuth requests require an absolute `redirect_url`. Its origin must match the request origin and appear in `app.admin-origins` or match `rustdesk.api-server`. For same-origin reverse proxy deployments, preserve the original `Host`, set `X-Forwarded-Proto` to the public scheme, and list the immediate proxy address in `gin.trust-proxy` or `RUSTDESK_API_GIN_TRUST_PROXY`.
+Admin OAuth requests require an absolute `redirect_url`. Its origin must match the request origin and appear in `app.admin-origins` or match `capylink.api-server`. For same-origin reverse proxy deployments, preserve the original `Host`, set `X-Forwarded-Proto` to the public scheme, and list the immediate proxy address in `gin.trust-proxy` or `CAPYLINK_API_GIN_TRUST_PROXY`.
 
-Anonymous Web Client sharing requires `rustdesk.id-server`. For a public hostname, a proxy, or an external ID Server, set `rustdesk.must-login` or `RUSTDESK_API_RUSTDESK_MUST_LOGIN` to `true` or `false` to match the target's policy. A policy that requires login or cannot be confirmed blocks creating and redeeming anonymous shares. You can omit this setting to query the local ID Server when `rustdesk.id-server` uses `127.0.0.1` or `::1` and its port matches `admin.id-server-port`.
+Anonymous Web Client sharing requires `capylink.id-server`. For a public hostname, a proxy, or an external ID Server, set `capylink.must-login` or `CAPYLINK_API_CAPYLINK_MUST_LOGIN` to `true` or `false` to match the target's policy. A policy that requires login or cannot be confirmed blocks creating and redeeming anonymous shares. You can omit this setting to query the local ID Server when `capylink.id-server` uses `127.0.0.1` or `::1` and its port matches `admin.id-server-port`.
 
 
 ### Environment Variables
-The environment variables correspond one-to-one with the configurations in the `conf/config.yaml` file. The prefix for variable names is `RUSTDESK_API`.
+The environment variables correspond one-to-one with the configurations in the `conf/config.yaml` file. The prefix for variable names is `CAPYLINK_API`.
 The table below does not list all configurations. Please refer to the configurations in `conf/config.yaml`.
+
+Upgrade existing configuration from the `rustdesk` root to `capylink`, and rename the `RUSTDESK_API` environment prefix to `CAPYLINK_API`; the server configuration segment also becomes `CAPYLINK`. Existing SQLite database files remain in use; new deployments use `data/capylinkapi.db`.
 
 | Variable Name                                          | Description                                                                                                                                         | Example                       |
 |--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------|
 | TZ                                                     | timezone                                                                                                                                            | Asia/Shanghai                 |
-| RUSTDESK_API_LANG                                      | Language                                                                                                                                            | `en`,`zh-CN`                  |
-| RUSTDESK_API_APP_WEB_CLIENT                            | web client on/off; 1: on, 0 off, default: 1                                                                                                         | 1                             |
-| RUSTDESK_API_APP_ADMIN_ORIGINS                         | Comma-separated trusted console origins. The list is empty by default. | `http://127.0.0.1:5174` |
-| RUSTDESK_API_APP_SHOW_SWAGGER                          | swagger visible; 1: yes, 0: no; default: 0                                                                                                          | `0`                           |
-| RUSTDESK_API_APP_TOKEN_EXPIRE                          | token expire duration                                                                                                                               | `168h`                        |
-| RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | Use -1 to disable CAPTCHA or 0 to always require it. A positive threshold must be lower than the ban threshold when both are enabled. | `-1` |
-| RUSTDESK_API_APP_BAN_THRESHOLD                         | Block password login and related requests for 30 minutes after this many failures from the same IP within 10 minutes. Use 0 to disable the ban. | `10` |
-| RUSTDESK_API_SMTP_HOST                                 | SMTP server address                                                                                                                                 | `smtp.aliyun.com`             |
-| RUSTDESK_API_SMTP_USER                                 | SMTP username                                                                                                                                       | `easyvcode@aliyun.com`        |
-| RUSTDESK_API_SMTP_PASSWORD                             | SMTP password                                                                                                                                       |                               |
-| RUSTDESK_API_SMTP_PORT                                 | SMTP port                                                                                                                                           | `465`                         |
-| RUSTDESK_API_SMTP_CRYPTO                               | SMTP encryption mode, use `ssl` for port 465                                                                                                        | `ssl`                         |
+| CAPYLINK_API_LANG                                      | Language                                                                                                                                            | `en`,`zh-CN`                  |
+| CAPYLINK_API_APP_WEB_CLIENT                            | web client on/off; 1: on, 0 off, default: 1                                                                                                         | 1                             |
+| CAPYLINK_API_APP_ADMIN_ORIGINS                         | Comma-separated trusted console origins. The list is empty by default. | `http://127.0.0.1:5174` |
+| CAPYLINK_API_APP_SHOW_SWAGGER                          | swagger visible; 1: yes, 0: no; default: 0                                                                                                          | `0`                           |
+| CAPYLINK_API_APP_TOKEN_EXPIRE                          | token expire duration                                                                                                                               | `168h`                        |
+| CAPYLINK_API_APP_CAPTCHA_THRESHOLD                     | Use -1 to disable CAPTCHA or 0 to always require it. A positive threshold must be lower than the ban threshold when both are enabled. | `-1` |
+| CAPYLINK_API_APP_BAN_THRESHOLD                         | Block password login and related requests for 30 minutes after this many failures from the same IP within 10 minutes. Use 0 to disable the ban. | `10` |
+| CAPYLINK_API_SMTP_HOST                                 | SMTP server address                                                                                                                                 | `smtp.aliyun.com`             |
+| CAPYLINK_API_SMTP_USER                                 | SMTP username                                                                                                                                       | `easyvcode@aliyun.com`        |
+| CAPYLINK_API_SMTP_PASSWORD                             | SMTP password                                                                                                                                       |                               |
+| CAPYLINK_API_SMTP_PORT                                 | SMTP port                                                                                                                                           | `465`                         |
+| CAPYLINK_API_SMTP_CRYPTO                               | SMTP encryption mode, use `ssl` for port 465                                                                                                        | `ssl`                         |
 | ----- ADMIN Configuration-----                         | ----------                                                                                                                                          | ----------                    |
-| RUSTDESK_API_ADMIN_TITLE                               | Admin Title                                                                                                                                         | `RustDesk Api Admin`          |
-| RUSTDESK_API_ADMIN_HELLO                               | Admin welcome message, you can use `html`                                                                                                           |                               |
-| RUSTDESK_API_ADMIN_HELLO_FILE                          | Admin welcome message file,<br>will override `RUSTDESK_API_ADMIN_HELLO`                                                                             | `./conf/admin/hello.html`     |
+| CAPYLINK_API_ADMIN_TITLE                               | Admin Title                                                                                                                                         | `capylink Api Admin`          |
+| CAPYLINK_API_ADMIN_HELLO                               | Admin welcome message, you can use `html`                                                                                                           |                               |
+| CAPYLINK_API_ADMIN_HELLO_FILE                          | Admin welcome message file,<br>will override `CAPYLINK_API_ADMIN_HELLO`                                                                             | `./conf/admin/hello.html`     |
 | ----- GIN Configuration -----                          | ---------------------------------------                                                                                                             | ----------------------------- |
-| RUSTDESK_API_GIN_TRUST_PROXY                           | Trusted proxy IPs, separated by commas.                                                                                                             | 192.168.1.2,192.168.1.3       |
+| CAPYLINK_API_GIN_TRUST_PROXY                           | Trusted proxy IPs, separated by commas.                                                                                                             | 192.168.1.2,192.168.1.3       |
 | ----- GORM Configuration -----                         | ---------------------------------------                                                                                                             | ----------------------------- |
-| RUSTDESK_API_GORM_TYPE                                 | Database type (`sqlite` or `mysql`). Default is `sqlite`.                                                                                           | sqlite                        |
-| RUSTDESK_API_GORM_MAX_IDLE_CONNS                       | Maximum idle connections                                                                                                                            | 10                            |
-| RUSTDESK_API_GORM_MAX_OPEN_CONNS                       | Maximum open connections                                                                                                                            | 100                           |
-| RUSTDESK_API_RUSTDESK_PERSONAL                         | Open Personal Api 1:Enable,0:Disable                                                                                                                | 1                             |
+| CAPYLINK_API_GORM_TYPE                                 | Database type (`sqlite` or `mysql`). Default is `sqlite`.                                                                                           | sqlite                        |
+| CAPYLINK_API_GORM_MAX_IDLE_CONNS                       | Maximum idle connections                                                                                                                            | 10                            |
+| CAPYLINK_API_GORM_MAX_OPEN_CONNS                       | Maximum open connections                                                                                                                            | 100                           |
+| CAPYLINK_API_CAPYLINK_PERSONAL                         | Open Personal Api 1:Enable,0:Disable                                                                                                                | 1                             |
 | ----- MYSQL Configuration -----                        | ---------------------------------------                                                                                                             | ----------------------------- |
-| RUSTDESK_API_MYSQL_USERNAME                            | MySQL username                                                                                                                                      | root                          |
-| RUSTDESK_API_MYSQL_PASSWORD                            | MySQL password                                                                                                                                      | 111111                        |
-| RUSTDESK_API_MYSQL_ADDR                                | MySQL address                                                                                                                                       | 192.168.1.66:3306             |
-| RUSTDESK_API_MYSQL_DBNAME                              | MySQL database name                                                                                                                                 | rustdesk                      |
-| RUSTDESK_API_MYSQL_TLS                             | Whether to enable TLS, optional values: `true`, `false`, `skip-verify`, `custom` | `false`                       |
-| ----- RUSTDESK Configuration -----                     | ---------------------------------------                                                                                                             | ----------------------------- |
-| RUSTDESK_API_RUSTDESK_ID_SERVER                        | Rustdesk ID server address                                                                                                                          | 192.168.1.66:21116            |
-| RUSTDESK_API_RUSTDESK_RELAY_SERVER                     | Rustdesk relay server address                                                                                                                       | 192.168.1.66:21117            |
-| RUSTDESK_API_RUSTDESK_API_SERVER                       | Rustdesk API server address                                                                                                                         | http://192.168.1.66:21114     |
-| RUSTDESK_API_RUSTDESK_KEY                              | Rustdesk key                                                                                                                                        | 123456789                     |
-| RUSTDESK_API_RUSTDESK_KEY_FILE                         | Rustdesk key file                                                                                                                                   | `./conf/data/id_ed25519.pub`  |
-| RUSTDESK_API_RUSTDESK<br/>_WEBCLIENT_MAGIC_QUERYONLINE | New online query method is enabled in the web client v2; '1': Enabled, '0': Disabled, not enabled by default                                        | `0`                           |
-| RUSTDESK_API_RUSTDESK_WS_HOST                          | Custom Websocket Host                                                                                                                               | `wss://192.168.1.123:1234`    |
+| CAPYLINK_API_MYSQL_USERNAME                            | MySQL username                                                                                                                                      | root                          |
+| CAPYLINK_API_MYSQL_PASSWORD                            | MySQL password                                                                                                                                      | 111111                        |
+| CAPYLINK_API_MYSQL_ADDR                                | MySQL address                                                                                                                                       | 192.168.1.66:3306             |
+| CAPYLINK_API_MYSQL_DBNAME                              | MySQL database name                                                                                                                                 | capylink                      |
+| CAPYLINK_API_MYSQL_TLS                             | Whether to enable TLS, optional values: `true`, `false`, `skip-verify`, `custom` | `false`                       |
+| ----- CAPYLINK Configuration -----                     | ---------------------------------------                                                                                                             | ----------------------------- |
+| CAPYLINK_API_CAPYLINK_ID_SERVER                        | capylink ID server address                                                                                                                          | 192.168.1.66:21116            |
+| CAPYLINK_API_CAPYLINK_RELAY_SERVER                     | capylink relay server address                                                                                                                       | 192.168.1.66:21117            |
+| CAPYLINK_API_CAPYLINK_API_SERVER                       | capylink API server address                                                                                                                         | http://192.168.1.66:21114     |
+| CAPYLINK_API_CAPYLINK_KEY                              | capylink key                                                                                                                                        | 123456789                     |
+| CAPYLINK_API_CAPYLINK_KEY_FILE                         | capylink key file                                                                                                                                   | `./conf/data/id_ed25519.pub`  |
+| CAPYLINK_API_CAPYLINK<br/>_WEBCLIENT_MAGIC_QUERYONLINE | New online query method is enabled in the web client v2; '1': Enabled, '0': Disabled, not enabled by default                                        | `0`                           |
+| CAPYLINK_API_CAPYLINK_WS_HOST                          | Custom Websocket Host                                                                                                                               | `wss://192.168.1.123:1234`    |
 | ---- PROXY -----                                       | ---------------                                                                                                                                     | ----------                    |
-| RUSTDESK_API_PROXY_ENABLE                              | proxy_enable :`false`, `true`                                                                                                                       | `false`                       |
-| RUSTDESK_API_PROXY_HOST                                | proxy_host                                                                                                                                          | `http://127.0.0.1:1080`       |
+| CAPYLINK_API_PROXY_ENABLE                              | proxy_enable :`false`, `true`                                                                                                                       | `false`                       |
+| CAPYLINK_API_PROXY_HOST                                | proxy_host                                                                                                                                          | `http://127.0.0.1:1080`       |
 | ----JWT----                                            | --------                                                                                                                                            | --------                      |
-| RUSTDESK_API_JWT_KEY                                   | Custom JWT KEY, if empty JWT is not enabled.<br/>If `MUST_LOGIN` from `lejianwen/rustdesk-server` is not used, it is recommended to leave it empty. |                               |
-| RUSTDESK_API_JWT_EXPIRE_DURATION                       | JWT expire duration                                                                                                                                 | `168h`                        |
+| CAPYLINK_API_JWT_KEY                                   | Custom JWT KEY, if empty JWT is not enabled.<br/>If `MUST_LOGIN` from `lejianwen/rustdesk-server` is not used, it is recommended to leave it empty. |                               |
+| CAPYLINK_API_JWT_EXPIRE_DURATION                       | JWT expire duration                                                                                                                                 | `168h`                        |
 
 ### Installation Steps
 
@@ -222,14 +202,14 @@ The table below does not list all configurations. Please refer to the configurat
    using environment variables to override settings.
     
     ```bash
-    docker run -d --name rustdesk-api -p 21114:21114 \
-    -v /data/rustdesk/api:/app/data \
-    -e RUSTDESK_API_LANG=en \
-    -e RUSTDESK_API_RUSTDESK_ID_SERVER=192.168.1.66:21116 \
-    -e RUSTDESK_API_RUSTDESK_RELAY_SERVER=192.168.1.66:21117 \
-    -e RUSTDESK_API_RUSTDESK_API_SERVER=http://192.168.1.66:21114 \
-    -e RUSTDESK_API_RUSTDESK_KEY=abc123456 \
-    lejianwen/rustdesk-api
+    docker run -d --name capylink-api -p 21114:21114 \
+    -v /data/capylink/api:/app/data \
+    -e CAPYLINK_API_LANG=en \
+    -e CAPYLINK_API_CAPYLINK_ID_SERVER=192.168.1.66:21116 \
+    -e CAPYLINK_API_CAPYLINK_RELAY_SERVER=192.168.1.66:21117 \
+    -e CAPYLINK_API_CAPYLINK_API_SERVER=http://192.168.1.66:21114 \
+    -e CAPYLINK_API_CAPYLINK_KEY=abc123456 \
+    ghcr.io/atishoo/capylink-api:ultrapro
     ```
 
 2. Using `docker-compose`,look [WIKI](https://github.com/lejianwen/rustdesk-api/wiki)
@@ -254,17 +234,17 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
     go install github.com/swaggo/swag/cmd/swag@latest
     ```
 
-3. Build the sibling console checkout with Node.js 22. [rustdesk-web](https://github.com/atishoo/rustdesk-web)
+3. Build the sibling console checkout with Node.js 22. [capylink-web](https://github.com/atishoo/rustdesk-web)
    ```bash
    (cd ../rustdesk-web && npm ci && npm run build)
    mkdir -p resources/admin
    cp -a ../rustdesk-web/dist/. resources/admin/
    ```
-   GitHub Actions builds `rustdesk-web/main` under the same owner by default. Use the repository variables `WEBCLIENT_REPOSITORY` and `WEBCLIENT_REF` to select a matching console revision. For a private console repository, set `RUSTDESK_WEB_READ_TOKEN` in the API repository with read access to the console contents. Publish the matching console revision before releasing the API.
+   GitHub Actions builds `rustdesk-web` under the same owner by default. Use the repository variables `WEBCLIENT_REPOSITORY` and `WEBCLIENT_REF` to select a matching console revision. For a private console repository, set `RUSTDESK_WEB_READ_TOKEN` in the API repository with read access to the console contents. Publish the matching console revision before releasing the API.
 
    To build the development image locally, run this from the API repository root.
    ```bash
-   docker build -f Dockerfile.dev --build-context rustdesk-web=../rustdesk-web .
+   docker build -f Dockerfile.dev --build-context capylink-web=../rustdesk-web .
    ```
    For a branded client, set `VITE_NATIVE_CLIENT_SCHEME` to its registered protocol name in GitHub Actions repository variables, the Compose environment, or `docker build --build-arg`.
 
@@ -278,9 +258,9 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
    > **Note:** When using `go run` or the compiled binary, the `conf` and `resources`
    > directories must exist relative to the current working directory. If you run
    > the program from another location, specify absolute paths with `-c` and the
-   > `RUSTDESK_API_GIN_RESOURCES_PATH` environment variable. Example:
+   > `CAPYLINK_API_GIN_RESOURCES_PATH` environment variable. Example:
    > ```bash
-   > RUSTDESK_API_GIN_RESOURCES_PATH=/opt/rustdesk-api/resources ./apimain -c /opt/rustdesk-api/conf/config.yaml
+   > CAPYLINK_API_GIN_RESOURCES_PATH=/opt/capylink-api/resources ./apimain -c /opt/capylink-api/conf/config.yaml
    > ```
 
 5. To compile, change to the project root directory. For Windows, run `build.bat`, and for Linux, run `build.sh`. After
@@ -291,47 +271,12 @@ Download the release from [release](https://github.com/lejianwen/rustdesk-api/re
 
 #### Running the UltraPro API + Web image
 
-After the UltraPro branch build completes, deploy the multi-architecture image `ghcr.io/atishoo/rustdesk-api:ultrapro`. It contains the API and management console. Run ID Server and Relay Server separately with `ghcr.io/atishoo/rustdesk-server:ultrapro`. For private GHCR packages, run `docker login ghcr.io` before starting the existing Compose deployment.
+After the UltraPro branch build completes, deploy the multi-architecture image `ghcr.io/atishoo/capylink-api:ultrapro`. It contains the API and management console. Run ID Server and Relay Server separately with `ghcr.io/atishoo/capylink-server:ultrapro`. For private GHCR packages, run `docker login ghcr.io` before starting the existing Compose deployment.
 
-#### Running with my forked server-s6 image
+#### Running with Compose
 
-- Connection timeout issue resolved
-- Can enforce login before initiating a connection
-- github https://github.com/lejianwen/rustdesk-server
+Use this repository's `docker-compose.yaml` to run the API, management console, and separate ID Server and Relay Server. Environment variable names are listed in that file and the configuration table above.
 
-```yaml
- networks:
-   rustdesk-net:
-     external: false
- services:
-   rustdesk:
-     ports:
-       - 21114:21114
-       - 21115:21115
-       - 21116:21116
-       - 21116:21116/udp
-       - 21117:21117
-       - 21118:21118
-       - 21119:21119
-     image: lejianwen/rustdesk-server-s6:latest
-     environment:
-       - RELAY=<relay_server[:port]>
-       - ENCRYPTED_ONLY=1
-       - MUST_LOGIN=N
-       - TZ=Asia/Shanghai
-       - RUSTDESK_API_RUSTDESK_ID_SERVER=<id_server[:21116]>
-       - RUSTDESK_API_RUSTDESK_RELAY_SERVER=<relay_server[:21117]>
-       - RUSTDESK_API_RUSTDESK_API_SERVER=http://<api_server[:21114]>
-       - RUSTDESK_API_KEY_FILE=/data/id_ed25519.pub
-       - RUSTDESK_API_JWT_KEY=xxxxxx # jwt key
-     volumes:
-       - /data/rustdesk/server:/data
-       - /data/rustdesk/api:/app/data #将数据库挂载
-     networks:
-       - rustdesk-net
-     restart: unless-stopped
-       
-```
 ## Others
 
 - [WIKI](https://github.com/lejianwen/rustdesk-api/wiki)

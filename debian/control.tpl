@@ -1,4 +1,4 @@
-Source: rustdesk-api-server
+Source: capylink-api-server
 Section: net
 Priority: optional
 Maintainer: ymwl <ymwlpoolc@qq.com>
@@ -6,8 +6,8 @@ Build-Depends: debhelper (>= 10), pkg-config
 Standards-Version: 4.5.0
 Homepage: https://github.com/lejianwen/rustdesk-api/
 
-Package: rustdesk-api-server
+Package: capylink-api-server
 Architecture: {{ ARCH }}
 Depends: systemd ${misc:Depends}
-Description: RustDesk api server
- RustDesk api server, it is free and open source.
+Description: capylink api server
+ capylink api server, it is free and open source.

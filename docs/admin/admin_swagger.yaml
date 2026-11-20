@@ -1751,7 +1751,7 @@ paths:
             $ref: '#/definitions/response.Response'
       security:
       - token: []
-      summary: RUSTDESK服务配置
+      summary: 卡皮远控服务配置
       tags:
       - ADMIN
   /admin/device_group/create:

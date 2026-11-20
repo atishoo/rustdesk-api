@@ -351,7 +351,7 @@ function _getByName(name, arg) {
             return scopedLaunch ? [] : getPeersForDart();
         case 'remote_id':
             if (sharedLaunch) return sharedTarget?.id;
-            return managedLaunch ? window.rustdeskManagedTarget?.id : localStorage.getItem('remote-id');
+            return managedLaunch ? window.capylinkManagedTarget?.id : localStorage.getItem('remote-id');
         case 'remember':
             return curConn.getRemember();
         case 'toggle_option':
@@ -369,9 +369,9 @@ function _getByName(name, arg) {
         case 'option':
             if (scopedLaunch && Object.hasOwn(scopedOptionFields, arg)) {
                 const field = scopedOptionFields[arg];
-                const target = sharedLaunch ? sharedTarget : window.rustdeskManagedTarget;
+                const target = sharedLaunch ? sharedTarget : window.capylinkManagedTarget;
                 if (!field || !target) return '';
-                if (field === 'api') return (sharedLaunch && window.rustdeskWebClientApiServer) || location.origin;
+                if (field === 'api') return (sharedLaunch && window.capylinkWebClientApiServer) || location.origin;
                 return target[field] ?? '';
             }
             if (arg === 'api-server' || arg === 'wc-api-server') {

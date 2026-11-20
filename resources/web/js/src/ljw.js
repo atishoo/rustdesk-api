@@ -1,4 +1,4 @@
-import {matchesRendezvous} from './common'
+import {matchesRendezvous, translate} from './common'
 
 window._gwen = {}
 window._gwen.kv = {}
@@ -56,7 +56,7 @@ export function getWebClientNetworkOption(name) {
 }
 
 if (!managedLaunch && !sharedLaunch) {
-    const configuredApi = window.rustdeskWebClientAccountApiServer || location.origin
+    const configuredApi = window.capylinkWebClientAccountApiServer || location.origin
     if (sessionStorage.getItem('webclient-config-api-server') !== configuredApi) {
         setWebClientAccountApi(configuredApi)
         sessionStorage.setItem('webclient-config-api-server', configuredApi)
@@ -66,7 +66,7 @@ if (!managedLaunch && !sharedLaunch) {
 export function readManagedLaunchToken() {
     if (!/^[a-f0-9]{32}$/.test(launchSession)) return undefined
     try {
-        const session = JSON.parse(localStorage.getItem('rustdesk-web-token') || 'null')
+        const session = JSON.parse(localStorage.getItem('capylink-web-token') || 'null')
         if (session?.origin === location.origin && session.launchSession === launchSession && typeof session.token === 'string') {
             return session.token || undefined
         }
@@ -86,7 +86,7 @@ if (id && !managedLaunch && !sharedLaunch) {
     localStorage.setItem('remote-id', id)
 }
 export let sharedTarget
-window.rustdeskSharedTargetReady = shareToken?.trim() ? redeemSharedTarget() : null
+window.capylinkSharedTargetReady = shareToken?.trim() ? redeemSharedTarget() : null
 window.addEventListener('hashchange', () => {
     const next = launchParams()
     const nextToken = next.get('share_token')
@@ -107,7 +107,7 @@ export function decodeSharedPassword(encoded) {
 }
 
 async function redeemSharedTarget() {
-    const apiServer = window.rustdeskWebClientApiServer
+    const apiServer = window.capylinkWebClientApiServer
     if (typeof apiServer !== 'string') return null
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 15000)
@@ -143,7 +143,7 @@ async function redeemSharedTarget() {
     }
 }
 
-const managedPasswordKey = (target) => 'rustdesk-managed-peer-password:' + JSON.stringify([launchSession, location.origin, target.server, target.key, target.id])
+const managedPasswordKey = (target) => 'capylink-managed-peer-password:' + JSON.stringify([launchSession, location.origin, target.server, target.key, target.id])
 
 export function loadManagedPassword(target) {
     const password = localStorage.getItem(managedPasswordKey(target))
@@ -230,3 +230,7 @@ function importServerPeers(peers) {
         // Import is optional. It must not invalidate the authenticated server configuration.
     }
 }
+
+const brandName = translate(navigator.language, "capylink");
+document.title = brandName;
+document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute("content", brandName);

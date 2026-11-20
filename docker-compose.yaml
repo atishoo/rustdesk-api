@@ -1,12 +1,12 @@
 services:
   hbbs:
-    image: ghcr.io/atishoo/rustdesk-server:ultrapro
+    image: ghcr.io/atishoo/capylink-server:ultrapro
     container_name: hbbs
     command: hbbs -r hbbr:21117
     environment:
       ENABLE_TCP_REGISTER: ${ENABLE_TCP_REGISTER:-Y}
       MUST_LOGIN: ${MUST_LOGIN:-N}
-      RUSTDESK_API_JWT_KEY: ${RUSTDESK_API_JWT_KEY:-}
+      CAPYLINK_API_JWT_KEY: ${CAPYLINK_API_JWT_KEY:-}
     ports:
       - "21115:21115"
       - "21116:21116"
@@ -15,14 +15,14 @@ services:
     volumes:
       - ./data/server:/data
     networks:
-      - rustdesk-net
+      - capylink-net
     depends_on:
       hbbr:
         condition: service_started
     restart: unless-stopped
 
   hbbr:
-    image: ghcr.io/atishoo/rustdesk-server:ultrapro
+    image: ghcr.io/atishoo/capylink-server:ultrapro
     container_name: hbbr
     command: hbbr
     ports:
@@ -31,22 +31,22 @@ services:
     volumes:
       - ./data/server:/data
     networks:
-      - rustdesk-net
+      - capylink-net
     restart: unless-stopped
 
-  rustdesk-api:
-    image: ghcr.io/atishoo/rustdesk-api:ultrapro
-    container_name: rustdesk-api
+  capylink-api:
+    image: ghcr.io/atishoo/capylink-api:ultrapro
+    container_name: capylink-api
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      RUSTDESK_API_LANG: ${RUSTDESK_API_LANG:-zh-CN}
-      RUSTDESK_API_RUSTDESK_ID_SERVER: ${RUSTDESK_ID_SERVER:?set RUSTDESK_ID_SERVER}
-      RUSTDESK_API_RUSTDESK_RELAY_SERVER: ${RUSTDESK_RELAY_SERVER:?set RUSTDESK_RELAY_SERVER}
-      RUSTDESK_API_RUSTDESK_API_SERVER: ${RUSTDESK_API_SERVER:?set RUSTDESK_API_SERVER}
-      RUSTDESK_API_RUSTDESK_KEY_FILE: /server-data/id_ed25519.pub
-      RUSTDESK_API_RUSTDESK_WS_HOST: ${RUSTDESK_WS_HOST:-}
-      RUSTDESK_API_APP_ADMIN_ORIGINS: ${RUSTDESK_ADMIN_ORIGINS:-}
-      RUSTDESK_API_JWT_KEY: ${RUSTDESK_API_JWT_KEY:-}
+      CAPYLINK_API_LANG: ${CAPYLINK_API_LANG:-zh-CN}
+      CAPYLINK_API_CAPYLINK_ID_SERVER: ${CAPYLINK_ID_SERVER:?set CAPYLINK_ID_SERVER}
+      CAPYLINK_API_CAPYLINK_RELAY_SERVER: ${CAPYLINK_RELAY_SERVER:?set CAPYLINK_RELAY_SERVER}
+      CAPYLINK_API_CAPYLINK_API_SERVER: ${CAPYLINK_API_SERVER:?set CAPYLINK_API_SERVER}
+      CAPYLINK_API_CAPYLINK_KEY_FILE: /server-data/id_ed25519.pub
+      CAPYLINK_API_CAPYLINK_WS_HOST: ${CAPYLINK_WS_HOST:-}
+      CAPYLINK_API_APP_ADMIN_ORIGINS: ${CAPYLINK_ADMIN_ORIGINS:-}
+      CAPYLINK_API_JWT_KEY: ${CAPYLINK_API_JWT_KEY:-}
     ports:
       - "21114:21114"
     volumes:
@@ -54,7 +54,7 @@ services:
       - ./data/api-runtime:/app/runtime
       - ./data/server:/server-data:ro
     networks:
-      - rustdesk-net
+      - capylink-net
     depends_on:
       hbbs:
         condition: service_healthy
@@ -63,5 +63,5 @@ services:
     restart: unless-stopped
 
 networks:
-  rustdesk-net:
+  capylink-net:
     driver: bridge

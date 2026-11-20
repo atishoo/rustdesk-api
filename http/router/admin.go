@@ -43,7 +43,7 @@ func Init(g *gin.Engine) {
 	UserTokenBind(adg)
 
 	//deprecated by ConfigBind
-	//rs := &admin.Rustdesk{}
+	//rs := &admin.Capylink{}
 	//adg.GET("/server-config", rs.ServerConfig)
 	//adg.GET("/app-config", rs.AppConfig)
 	//deprecated end
@@ -51,15 +51,15 @@ func Init(g *gin.Engine) {
 	ShareRecordBind(adg)
 	MyBind(adg)
 
-	RustdeskCmdBind(adg)
+	CapylinkCmdBind(adg)
 	DeviceGroupBind(adg)
 	//访问静态文件
 	//g.StaticFS("/upload", http.Dir(global.Config.Gin.ResourcesPath+"/upload"))
 }
 
-func RustdeskCmdBind(adg *gin.RouterGroup) {
-	cont := &admin.Rustdesk{}
-	rg := adg.Group("/rustdesk").Use(middleware.AdminPrivilege())
+func CapylinkCmdBind(adg *gin.RouterGroup) {
+	cont := &admin.Capylink{}
+	rg := adg.Group("/capylink").Use(middleware.AdminPrivilege())
 	rg.POST("/sendCmd", cont.SendCmd)
 	rg.GET("/status", cont.Status)
 	rg.GET("/cmdList", cont.CmdList)

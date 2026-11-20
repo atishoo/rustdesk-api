@@ -1,5 +1,5 @@
-ARG RUSTDESK_SERVER_IMAGE=ghcr.io/atishoo/rustdesk-server:ultrapro
-FROM ${RUSTDESK_SERVER_IMAGE} AS server
+ARG CAPYLINK_SERVER_IMAGE=ghcr.io/atishoo/capylink-server:ultrapro
+FROM ${CAPYLINK_SERVER_IMAGE} AS server
 
 FROM alpine
 
@@ -13,7 +13,7 @@ COPY --from=server /etc/s6-overlay /etc/s6-overlay
 COPY --from=server /package /package
 COPY --from=server /usr/bin/hbbr /usr/bin/hbbr
 COPY --from=server /usr/bin/hbbs /usr/bin/hbbs
-COPY --from=server /usr/bin/rustdesk-utils /usr/bin/rustdesk-utils
+COPY --from=server /usr/bin/capylink-utils /usr/bin/capylink-utils
 COPY --from=server /command /command
 
 RUN \
@@ -21,7 +21,7 @@ RUN \
   echo -e "key-secret\nhbbs" > /etc/s6-overlay/s6-rc.d/api/dependencies && \
   echo "longrun" > /etc/s6-overlay/s6-rc.d/api/type && \
   echo "#!/command/with-contenv sh" > /etc/s6-overlay/s6-rc.d/api/run && \
-  echo 'export RUSTDESK_API_S6_LOCAL_CONTROL=1' >> /etc/s6-overlay/s6-rc.d/api/run && \
+  echo 'export CAPYLINK_API_S6_LOCAL_CONTROL=1' >> /etc/s6-overlay/s6-rc.d/api/run && \
   echo "cd /app" >> /etc/s6-overlay/s6-rc.d/api/run && \
   echo "exec ./apimain" >> /etc/s6-overlay/s6-rc.d/api/run && \
   touch /etc/s6-overlay/s6-rc.d/user/contents.d/api && \

@@ -13,9 +13,9 @@ import (
 type Config struct {
 }
 
-// ServerConfig RUSTDESK服务配置
+// ServerConfig 卡皮远控服务配置
 // @Tags ADMIN
-// @Summary RUSTDESK服务配置
+// @Summary 卡皮远控服务配置
 // @Description 服务配置,给webclient提供api-server
 // @Accept  json
 // @Produce  json
@@ -25,11 +25,11 @@ type Config struct {
 // @Security token
 func (co *Config) ServerConfig(c *gin.Context) {
 	cf := &response.ServerConfigResponse{
-		IdServer:    global.Config.Rustdesk.IdServer,
-		Key:         global.Config.Rustdesk.Key,
-		RelayServer: global.Config.Rustdesk.RelayServer,
-		ApiServer:   global.Config.Rustdesk.ApiServer,
-		MustLogin:   global.Config.Rustdesk.MustLogin,
+		IdServer:    global.Config.Capylink.IdServer,
+		Key:         global.Config.Capylink.Key,
+		RelayServer: global.Config.Capylink.RelayServer,
+		ApiServer:   global.Config.Capylink.ApiServer,
+		MustLogin:   global.Config.Capylink.MustLogin,
 	}
 	response.Success(c, cf)
 }

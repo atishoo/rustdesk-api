@@ -238,7 +238,7 @@ func sendEmail(to, code string) error {
 	if err != nil {
 		return err
 	}
-	_, writeErr := fmt.Fprintf(writer, "From: %s\r\nTo: %s\r\nSubject: RustDesk verification code\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nYour RustDesk verification code is %s. It expires in 10 minutes.\r\n", Config.SMTP.User, to, code)
+	_, writeErr := fmt.Fprintf(writer, "From: %s\r\nTo: %s\r\nSubject: capylink verification code\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nYour capylink verification code is %s. It expires in 10 minutes.\r\n", Config.SMTP.User, to, code)
 	if err := writer.Close(); err != nil {
 		return err
 	}

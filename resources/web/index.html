@@ -24,17 +24,17 @@
     <!-- iOS meta tags & icons -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="RustDesk">
-    <link rel="apple-touch-icon" href="icons/Icon-192.png">
+    <meta name="apple-mobile-web-app-title" content="capylink">
+    <link rel="apple-touch-icon" href="icons/Icon-maskable-192.png">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg"/>
 
-    <title>RustDesk</title>
+    <title>capylink</title>
     <link rel="manifest" href="manifest.json">
     <script src="/webclient-config/index.js"></script>
     <script src="ogvjs-1.8.6/ogv.js"></script>
-    <script type="module" crossorigin src="js/dist/index.js?v=d16b2647"></script>
+    <script type="module" crossorigin src="js/dist/index.js?v=9e4ccd72"></script>
     <script>
     </script>
     <link rel="modulepreload" href="js/dist/vendor.js?v=dfb97bdf">
@@ -98,7 +98,7 @@
      application. For more information, see:
      https://developers.google.com/web/fundamentals/primers/service-workers -->
 <script>
-    var serviceWorkerVersion = '3513460295';
+    var serviceWorkerVersion = 'cefdf7da5e';
     var scriptLoaded = false;
     var shareLaunch = window.location.hash.startsWith('#/?')
         && new URLSearchParams(window.location.hash.slice(3)).has('share_token');
@@ -108,7 +108,7 @@
             return;
         }
         scriptLoaded = true;
-        if (shareLaunch && !await window.rustdeskSharedTargetReady) {
+        if (shareLaunch && !await window.capylinkSharedTargetReady) {
             const loading = document.querySelector('.loading');
             loading.textContent = '分享链接不可用或已过期，请刷新重试或联系分享者重新生成。';
             loading.setAttribute('role', 'alert');

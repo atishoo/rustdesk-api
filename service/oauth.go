@@ -55,7 +55,7 @@ type OidcEndpoint struct {
 
 type OauthCacheItem struct {
 	UserId           uint                  `json:"user_id"`
-	Id               string                `json:"id"` //rustdesk的设备ID
+	Id               string                `json:"id"` //卡皮远控的设备ID
 	Op               string                `json:"op"`
 	Action           string                `json:"action"`
 	Uuid             string                `json:"uuid"`
@@ -175,7 +175,7 @@ func (os *OauthService) BeginAuth(op string) (error error, state, verifier, nonc
 		if op != model.OauthTypeWebauth || !Config.App.WebSso {
 			return errors.New("ConfigNotFound"), "", "", "", ""
 		}
-		url = Config.Rustdesk.ApiServer + "/_admin/#/oauth/" + state
+		url = Config.Capylink.ApiServer + "/_admin/#/oauth/" + state
 		//url = "http://localhost:8888/_admin/#/oauth/" + code
 		return nil, state, verifier, nonce, url
 	}
@@ -253,7 +253,7 @@ func (os *OauthService) GetOauthConfig(op string) (err error, oauthInfo *model.O
 	oauthConfig = &oauth2.Config{
 		ClientID:     oauthInfo.ClientId,
 		ClientSecret: oauthInfo.ClientSecret,
-		RedirectURL:  Config.Rustdesk.ApiServer + "/api/oidc/callback",
+		RedirectURL:  Config.Capylink.ApiServer + "/api/oidc/callback",
 	}
 
 	// Maybe should validate the oauthConfig here

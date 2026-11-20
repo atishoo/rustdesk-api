@@ -358,7 +358,7 @@ func (a *Ab) Personal(c *gin.Context) {
 	       note = json['note'] ?? '',
 	       rule = json['rule'] ?? 0;
 	*/
-	if global.Config.Rustdesk.Personal == 1 {
+	if global.Config.Capylink.Personal == 1 {
 		guid := a.ComposeGuid(user.GroupId, user.Id, 0)
 		//如果返回了guid，后面的请求会有变化
 		c.JSON(http.StatusOK, gin.H{

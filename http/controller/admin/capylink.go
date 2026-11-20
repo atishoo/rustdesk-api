@@ -12,16 +12,16 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/service"
 )
 
-type Rustdesk struct {
+type Capylink struct {
 }
 
-type RustdeskCmd struct {
+type CapylinkCmd struct {
 	Cmd    string `json:"cmd"`
 	Option string `json:"option"`
 	Target string `json:"target"`
 }
 
-func validRustdeskCmd(cmd, target string) bool {
+func validCapylinkCmd(cmd, target string) bool {
 	return strings.TrimSpace(cmd) != "" &&
 		(target == model.ServerCmdTargetIdServer || target == model.ServerCmdTargetRelayServer)
 }
@@ -56,7 +56,7 @@ func normalizeRelayAddressOption(cmd, option string) (string, bool) {
 	return strings.Join(addresses, "|"), true
 }
 
-func (r *Rustdesk) CmdList(c *gin.Context) {
+func (r *Capylink) CmdList(c *gin.Context) {
 	q := &admin.PageQuery{}
 	if err := c.ShouldBindQuery(q); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
@@ -72,7 +72,7 @@ func (r *Rustdesk) CmdList(c *gin.Context) {
 	response.Success(c, res)
 }
 
-func (r *Rustdesk) CmdDelete(c *gin.Context) {
+func (r *Capylink) CmdDelete(c *gin.Context) {
 	f := &model.ServerCmd{}
 	if err := c.ShouldBindJSON(f); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
@@ -96,14 +96,14 @@ func (r *Rustdesk) CmdDelete(c *gin.Context) {
 	}
 	response.Success(c, nil)
 }
-func (r *Rustdesk) CmdCreate(c *gin.Context) {
+func (r *Capylink) CmdCreate(c *gin.Context) {
 	f := &model.ServerCmd{}
 	if err := c.ShouldBindJSON(f); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
 	f.Cmd = strings.TrimSpace(f.Cmd)
-	if !validRustdeskCmd(f.Cmd, f.Target) {
+	if !validCapylinkCmd(f.Cmd, f.Target) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
@@ -115,14 +115,14 @@ func (r *Rustdesk) CmdCreate(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-func (r *Rustdesk) CmdUpdate(c *gin.Context) {
+func (r *Capylink) CmdUpdate(c *gin.Context) {
 	f := &model.ServerCmd{}
 	if err := c.ShouldBindJSON(f); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
 	f.Cmd = strings.TrimSpace(f.Cmd)
-	if !validRustdeskCmd(f.Cmd, f.Target) {
+	if !validCapylinkCmd(f.Cmd, f.Target) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
@@ -139,14 +139,14 @@ func (r *Rustdesk) CmdUpdate(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-func (r *Rustdesk) SendCmd(c *gin.Context) {
-	rc := &RustdeskCmd{}
+func (r *Capylink) SendCmd(c *gin.Context) {
+	rc := &CapylinkCmd{}
 	if err := c.ShouldBindJSON(rc); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
 	rc.Cmd = strings.TrimSpace(rc.Cmd)
-	if !validRustdeskCmd(rc.Cmd, rc.Target) {
+	if !validCapylinkCmd(rc.Cmd, rc.Target) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
@@ -173,7 +173,7 @@ func (r *Rustdesk) SendCmd(c *gin.Context) {
 	response.Success(c, res)
 }
 
-func (r *Rustdesk) Status(c *gin.Context) {
+func (r *Capylink) Status(c *gin.Context) {
 	relayStatus := make(chan bool, 1)
 	go func() {
 		help, err := service.AllService.ServerCmdService.SendCmd(global.Config.Admin.RelayServerPort, "h", "")

@@ -75,7 +75,7 @@ func localAddressBookDeviceID(target model.AddressBookTarget) (model.DeviceIdent
 	id, serverKey, explicitServer := strings.Cut(string(target), "@")
 	if explicitServer {
 		server, _, _ := strings.Cut(serverKey, "?")
-		configured := Config.Rustdesk.IdServer
+		configured := Config.Capylink.IdServer
 		if server == "" || server == "public" || configured == "" || addressBookServerKey(server) != addressBookServerKey(configured) {
 			return "", false
 		}

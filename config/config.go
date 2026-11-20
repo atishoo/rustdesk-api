@@ -53,7 +53,7 @@ type Config struct {
 	Cache      Cache
 	Oss        Oss
 	Jwt        Jwt
-	Rustdesk   Rustdesk
+	Capylink   Capylink
 	Proxy      Proxy
 	Ldap       Ldap
 }
@@ -75,15 +75,15 @@ func Init(rowVal *Config, path string) *viper.Viper {
 	v := viper.GetViper()
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-	v.SetEnvPrefix("RUSTDESK_API")
+	v.SetEnvPrefix("CAPYLINK_API")
 	v.SetDefault("app.admin-origins", "")
 	v.SetDefault("app.captcha-threshold", -1)
 	v.SetDefault("app.ban-threshold", 10)
 	v.SetDefault("gin.trust-proxy", "")
 	v.SetDefault("jwt.key", "")
 	v.SetDefault("jwt.expire-duration", 168*time.Hour)
-	_ = v.BindEnv("rustdesk.must-login")
-	v.SetDefault("rustdesk.webclient-share-api-server", "")
+	_ = v.BindEnv("capylink.must-login")
+	v.SetDefault("capylink.webclient-share-api-server", "")
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
 	err := v.ReadInConfig()
@@ -101,8 +101,8 @@ func Init(rowVal *Config, path string) *viper.Viper {
 				if err2 := v.Unmarshal(rowVal); err2 != nil {
 					fmt.Println(err2)
 				}
-				rowVal.Rustdesk.LoadKeyFile()
-				rowVal.Rustdesk.ParsePort()
+				rowVal.Capylink.LoadKeyFile()
+				rowVal.Capylink.ParsePort()
 			})
 	*/
 	if err := v.Unmarshal(rowVal); err != nil {
@@ -111,25 +111,25 @@ func Init(rowVal *Config, path string) *viper.Viper {
 	if rowVal.Jwt.Key != "" && rowVal.Jwt.ExpireDuration <= 0 {
 		panic("jwt.expire-duration must be positive when JWT is enabled")
 	}
-	if address := strings.TrimSpace(rowVal.Rustdesk.WebclientShareApiServer); address != "" {
+	if address := strings.TrimSpace(rowVal.Capylink.WebclientShareApiServer); address != "" {
 		base, err := url.Parse(address)
 		if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Hostname() == "" || base.User != nil || strings.ContainsAny(address, "?#") {
-			panic("rustdesk.webclient-share-api-server must be an absolute HTTP(S) URL without user information, query, or fragment")
+			panic("capylink.webclient-share-api-server must be an absolute HTTP(S) URL without user information, query, or fragment")
 		}
 		if port := base.Port(); port != "" {
 			if _, err := strconv.ParseUint(port, 10, 16); err != nil {
-				panic("rustdesk.webclient-share-api-server has an invalid port")
+				panic("capylink.webclient-share-api-server has an invalid port")
 			}
 		}
-		rowVal.Rustdesk.WebclientShareApiServer = strings.TrimRight(base.String(), "/")
+		rowVal.Capylink.WebclientShareApiServer = strings.TrimRight(base.String(), "/")
 	} else {
-		rowVal.Rustdesk.WebclientShareApiServer = ""
+		rowVal.Capylink.WebclientShareApiServer = ""
 	}
 	if rowVal.App.BanThreshold > 0 && rowVal.App.CaptchaThreshold >= rowVal.App.BanThreshold {
 		panic(fmt.Errorf("app.captcha-threshold (%d) must be lower than app.ban-threshold (%d) when both are enabled",
 			rowVal.App.CaptchaThreshold, rowVal.App.BanThreshold))
 	}
-	rowVal.Rustdesk.LoadKeyFile()
+	rowVal.Capylink.LoadKeyFile()
 	rowVal.Admin.Init()
 	return v
 }

@@ -82,7 +82,7 @@ func AdminRedirectOriginAllowed(origin string) bool {
 	if origin == "" {
 		return false
 	}
-	apiURL, err := url.Parse(global.Config.Rustdesk.ApiServer)
+	apiURL, err := url.Parse(global.Config.Capylink.ApiServer)
 	if err == nil && origin == urlOrigin(apiURL) {
 		return true
 	}

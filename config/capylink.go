@@ -15,7 +15,7 @@ const (
 	DefaultRelayServerPort = 21117
 )
 
-type Rustdesk struct {
+type Capylink struct {
 	IdServer        string `mapstructure:"id-server"`
 	MustLogin       *bool  `mapstructure:"must-login"`
 	IdServerPort    int    `mapstructure:"-"`
@@ -31,13 +31,13 @@ type Rustdesk struct {
 	WsHost                    string `mapstructure:"ws-host"`
 }
 
-func (rd *Rustdesk) LoadKeyFile() {
+func (rd *Capylink) LoadKeyFile() {
 	if rd.Key != "" || rd.KeyFile == "" {
 		return
 	}
 
 	// The full-s6 services can start before the bundled server publishes its key.
-	waitForBundledKey := os.Getenv("RUSTDESK_API_S6_LOCAL_CONTROL") == "1" && rd.KeyFile == "/data/id_ed25519.pub"
+	waitForBundledKey := os.Getenv("CAPYLINK_API_S6_LOCAL_CONTROL") == "1" && rd.KeyFile == "/data/id_ed25519.pub"
 	if waitForBundledKey && os.Getenv("ENCRYPTED_ONLY") != "1" {
 		// Without -k _, hbbs can take an inline key and never create a file.
 		var key string
@@ -80,7 +80,7 @@ func (rd *Rustdesk) LoadKeyFile() {
 			return
 		}
 		if !time.Now().Before(deadline) {
-			panic("bundled RustDesk public key /data/id_ed25519.pub is not ready")
+			panic("bundled capylink public key /data/id_ed25519.pub is not ready")
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

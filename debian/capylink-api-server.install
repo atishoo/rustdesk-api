@@ -1,0 +1,6 @@
+bin/capylink-api usr/bin
+systemd/capylink-api.service lib/systemd/system
+conf var/lib/capylink-api
+data var/lib/capylink-api
+resources var/lib/capylink-api
+runtime var/lib/capylink-api

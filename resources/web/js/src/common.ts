@@ -36,6 +36,7 @@ const LANG = getLang();
 
 export function translate(locale: string, text: string): string {
   const lang = LANG || locale.substring(locale.length - 2).toLowerCase();
+  if (text === "capylink") return /^(zh|cn|tw)([-_]|$)/i.test(lang) ? "卡皮远控" : "capylink";
   let en = LANGS.en as any;
   let dict = (LANGS as any)[lang];
   if (!dict) dict = en;
@@ -97,7 +98,7 @@ export function getWebClientUri(server: string, isRelay: boolean, relayEndpoint 
   const ipv6 = !websocket && !server.startsWith("[") && server.indexOf(":") !== server.lastIndexOf(":");
   let address: URL;
   try {
-    address = new URL(websocket ? server : `rustdesk-id://${ipv6 ? `[${server}]` : server}`);
+    address = new URL(websocket ? server : `capylink-id://${ipv6 ? `[${server}]` : server}`);
   } catch {
     throw new Error("服务端地址无效");
   }

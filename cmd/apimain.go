@@ -38,7 +38,7 @@ const DatabaseVersion = 267
 
 var rootCmd = &cobra.Command{
 	Use:   "apimain",
-	Short: "RUSTDESK API SERVER",
+	Short: "capylink API server",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		InitGlobal()
 	},

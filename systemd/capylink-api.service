@@ -1,0 +1,18 @@
+[Unit]
+Description=capylink API Server
+
+[Service]
+Type=simple
+LimitNOFILE=1000000
+ExecStart=/usr/bin/capylink-api
+WorkingDirectory=/var/lib/capylink-api/
+User=
+Group=
+Restart=always
+StandardOutput=append:/var/log/capylink-api/capylink-api.log
+StandardError=append:/var/log/capylink-api/capylink-api.error
+# Restart service after 10 seconds if node service crashes
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
