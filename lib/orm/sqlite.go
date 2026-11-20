@@ -5,7 +5,6 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"os"
 	"time"
 )
 
@@ -15,17 +14,7 @@ type SqliteConfig struct {
 }
 
 func NewSqlite(sqliteConf *SqliteConfig, logwriter logger.Writer) *gorm.DB {
-	databasePath := "./data/capylinkapi.db"
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		if _, legacyErr := os.Stat("./data/rustdeskapi.db"); legacyErr == nil {
-			databasePath = "./data/rustdeskapi.db"
-		} else if !os.IsNotExist(legacyErr) {
-			panic(fmt.Errorf("cannot inspect legacy database: %w", legacyErr))
-		}
-	} else if err != nil {
-		panic(fmt.Errorf("cannot inspect database: %w", err))
-	}
-	db, err := gorm.Open(sqlite.Open(databasePath), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open("./data/capylinkapi.db"), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 		Logger: logger.New(
 			logwriter, // io writer

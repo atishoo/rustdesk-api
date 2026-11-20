@@ -141,7 +141,7 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 匿名 Web Client 分享需要配置 `capylink.id-server`。使用公网域名、代理或外部 ID Server 时，请按实际目标的策略将 `capylink.must-login` 或 `CAPYLINK_API_CAPYLINK_MUST_LOGIN` 设为 `true` 或 `false`。`true` 或无法确认的策略均会阻止创建和兑换匿名分享。只有 `capylink.id-server` 为 `127.0.0.1` 或 `::1` 且端口与 `admin.id-server-port` 一致时，才能省略策略并查询本机实例。
 
 ### 环境变量
-环境变量和配置文件`conf/config.yaml`中的配置一一对应，变量名前缀是`CAPYLINK_API`。升级时将配置根 `rustdesk` 改为 `capylink`，环境变量前缀 `RUSTDESK_API` 改为 `CAPYLINK_API`，其中服务配置段也使用 `CAPYLINK`。已有 SQLite 数据文件会继续复用，新部署使用 `data/capylinkapi.db`
+环境变量和配置文件`conf/config.yaml`中的配置一一对应，变量名前缀是`CAPYLINK_API`，服务配置段使用 `CAPYLINK_API_CAPYLINK_*`。SQLite 数据库统一使用 `data/capylinkapi.db`。
 下面表格并未全部列出，可以参考`conf/config.yaml`中的配置。
 
 | 变量名                                                    | 说明                                                                             | 示例                           |
