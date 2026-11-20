@@ -180,9 +180,6 @@ func (ct *Login) LoginOptions(c *gin.Context) {
 	ops := []string{}
 	if middleware.AdminRedirectOriginAllowed(origin) {
 		ops = append(ops, service.AllService.OauthService.GetOauthProviders()...)
-		if global.Config.App.WebSso {
-			ops = append(ops, model.OauthTypeWebauth)
-		}
 	}
 	response.Success(c, gin.H{
 		"ops":          ops,

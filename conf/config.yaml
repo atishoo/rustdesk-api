@@ -7,7 +7,7 @@ app:
   ban-threshold: 10 # 0:disabled, >0:enabled
   show-swagger: 0 # 1:启用 0:禁用
   token-expire: 168h
-  web-sso: true #web auth sso
+  web-sso: false #关闭 WebAuth 登录入口
   admin-origins: "" # 可信管理控制台 Origin，以英文逗号分隔
   disable-pwd-login: false #禁用密码登录
 
