@@ -45,9 +45,31 @@ func (co *Config) ServerConfig(c *gin.Context) {
 // @Router /admin/config/app [get]
 // @Security token
 func (co *Config) AppConfig(c *gin.Context) {
+	registerEnabled, err := service.RegistrationState()
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+		return
+	}
 	response.Success(c, &gin.H{
 		"web_client": global.Config.App.WebClient,
+		"register":   registerEnabled,
 	})
+}
+
+// UpdateAppConfig updates administrator-controlled platform settings.
+func (co *Config) UpdateAppConfig(c *gin.Context) {
+	var form struct {
+		Register *bool `json:"register"`
+	}
+	if err := c.ShouldBindJSON(&form); err != nil || form.Register == nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	if err := service.SetRegistrationEnabled(*form.Register); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+		return
+	}
+	response.Success(c, gin.H{"register": *form.Register})
 }
 
 // AdminConfig ADMIN服务配置

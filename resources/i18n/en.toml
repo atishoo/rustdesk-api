@@ -256,11 +256,6 @@ description = "Captcha error."
 one = "Captcha error."
 other = "Captcha error."
 
-[PwdLoginDisabled]
-description = "Password login disabled."
-one = "Password login disabled."
-other = "Password login disabled."
-
 [CannotShareToSelf]
 description = "Cannot share to self."
 one = "Cannot share to self."

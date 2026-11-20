@@ -476,7 +476,7 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		if !Config.App.DisablePwdLogin && user.Username != "" && user.Password != "" && AllService.UserService.CheckUserEnable(&user) {
+		if user.Username != "" && user.Password != "" && AllService.UserService.CheckUserEnable(&user) {
 			if useLocalPassword && user.Username == username {
 				valid, _, err := utils.VerifyPassword(user.Password, loginPassword)
 				if err == nil && valid {
@@ -499,7 +499,7 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		if remaining > 0 {
 			return nil
 		}
-		if !Config.App.DisablePwdLogin && Config.Ldap.Enable && directoryUsername != "" && user.Username == username {
+		if Config.Ldap.Enable && directoryUsername != "" && user.Username == username {
 			// LDAP login maps the returned directory username to the local account.
 			var mapped model.User
 			err := tx.Select("id", "status").Where("username = ?", directoryUsername).First(&mapped).Error
@@ -529,7 +529,7 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		return ErrLastLoginMethod
 	}
 	err := DB.Transaction(unbind)
-	if !errors.Is(err, ErrLastLoginMethod) || username == "" || Config.App.DisablePwdLogin || !Config.Ldap.Enable {
+	if !errors.Is(err, ErrLastLoginMethod) || username == "" || !Config.Ldap.Enable {
 		return err
 	}
 	if loginPassword == "" {

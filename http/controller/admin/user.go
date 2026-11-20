@@ -365,7 +365,12 @@ func (ct *User) EmailCode(c *gin.Context) {
 
 // Register
 func (ct *User) Register(c *gin.Context) {
-	if !global.Config.App.Register {
+	enabled, err := service.RegistrationState()
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+		return
+	}
+	if !enabled {
 		response.Fail(c, 101, response.TranslateMsg(c, "RegisterClosed"))
 		return
 	}
@@ -384,24 +389,13 @@ func (ct *User) Register(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "PasswordNotMatch"))
 		return
 	}
-	regStatus := model.StatusCode(global.Config.App.RegisterStatus)
-	// 注册状态可能未配置，默认启用
-	if regStatus != model.COMMON_STATUS_DISABLED && regStatus != model.COMMON_STATUS_ENABLE {
-		regStatus = model.COMMON_STATUS_ENABLE
-	}
-
-	u, err := service.AllService.UserService.RegisterByEmail(f.Email, f.Password, f.Code, regStatus)
+	u, err := service.AllService.UserService.RegisterByEmail(f.Email, f.Password, f.Code)
 	if err != nil || u == nil || u.Id == 0 {
 		if err != nil {
 			response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
 		} else {
 			response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
 		}
-		return
-	}
-	if regStatus == model.COMMON_STATUS_DISABLED && (u.IsAdmin == nil || !*u.IsAdmin) {
-		// 需要管理员审核
-		response.Success(c, gin.H{"pending": true})
 		return
 	}
 	// 注册成功后自动登录

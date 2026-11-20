@@ -148,11 +148,6 @@ description = "Captcha error."
 one = "Error de captcha."
 other = "Error de captcha."
 
-[PwdLoginDisabled]
-description = "Password login disabled."
-one = "Inicio de sesión con contraseña deshabilitado."
-other = "Inicio de sesión con contraseña deshabilitado."
-
 [CannotShareToSelf]
 description = "Cannot share to self."
 one = "No se puede compartir con uno mismo."

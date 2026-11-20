@@ -174,11 +174,8 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 | RUSTDESK_API_LANG                                      | 语言                                                                             | `en`,`zh-CN`                 |
 | RUSTDESK_API_APP_WEB_CLIENT                            | 是否启用web-client; 1:启用,0:不启用; 默认启用                                               | 1                            |
 | RUSTDESK_API_APP_ADMIN_ORIGINS                         | 可信管理控制台 Origin，多个用英文逗号分隔，默认为空 | `http://127.0.0.1:5174` |
-| RUSTDESK_API_APP_REGISTER                              | 是否开启邮箱验证码注册; `true`, `false`  默认`true`                                             | `true`                       |
 | RUSTDESK_API_APP_SHOW_SWAGGER                          | 是否可见swagger文档;`1`显示，`0`不显示，默认`0`不显示                                            | `1`                          |
 | RUSTDESK_API_APP_TOKEN_EXPIRE                          | token有效时长                                                                      | `168h`                       |
-| RUSTDESK_API_APP_DISABLE_PWD_LOGIN                     | 是否禁用密码登录;  `true`, `false`  默认`false`                                          | `false`                      |
-| RUSTDESK_API_APP_REGISTER_STATUS                       | 注册用户默认状态; 1 启用，2 禁用, 默认 1                                                      | `1`                          |
 | RUSTDESK_API_APP_CAPTCHA_THRESHOLD                     | 验证码触发次数，-1 不启用，0 一直启用。正数表示失败次数阈值，同时启用封禁时必须小于封禁阈值 | `-1` |
 | RUSTDESK_API_APP_BAN_THRESHOLD                         | 同一 IP 在 10 分钟内登录失败达到阈值后，限制其密码登录及相关选项和验证码请求 30 分钟。已建立的会话与设备心跳可继续使用，0 表示关闭 | `10` |
 | RUSTDESK_API_SMTP_HOST                                 | SMTP 服务器地址                                                                  | `smtp.aliyun.com`           |

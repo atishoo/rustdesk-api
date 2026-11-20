@@ -18,13 +18,10 @@ const (
 
 type App struct {
 	WebClient        int           `mapstructure:"web-client"`
-	Register         bool          `mapstructure:"register"`
-	RegisterStatus   int           `mapstructure:"register-status"`
 	ShowSwagger      int           `mapstructure:"show-swagger"`
 	TokenExpire      time.Duration `mapstructure:"token-expire"`
 	WebSso           bool          `mapstructure:"web-sso"`
 	AdminOrigins     string        `mapstructure:"admin-origins"`
-	DisablePwdLogin  bool          `mapstructure:"disable-pwd-login"`
 	CaptchaThreshold int           `mapstructure:"captcha-threshold"`
 	BanThreshold     int           `mapstructure:"ban-threshold"`
 }

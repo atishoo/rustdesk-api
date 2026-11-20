@@ -248,6 +248,7 @@ func ConfigBind(rg *gin.RouterGroup) {
 	aR.Use(middleware.BackendUserAuth())
 	aR.GET("/server", rs.ServerConfig)
 	aR.GET("/app", rs.AppConfig)
+	aR.POST("/app", middleware.AdminPrivilege(), rs.UpdateAppConfig)
 
 }
 

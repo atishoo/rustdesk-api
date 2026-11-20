@@ -312,6 +312,19 @@ func Migrate(version uint) error {
 	); err != nil {
 		return err
 	}
+	platformDB := global.DB
+	platformComment := "'平台运行设置'"
+	if platformDB.Dialector.Name() == "mysql" {
+		platformDB = platformDB.Set("gorm:table_options", " COMMENT = "+platformComment)
+	}
+	if err := platformDB.AutoMigrate(&model.PlatformSetting{}); err != nil {
+		return err
+	}
+	if platformDB.Dialector.Name() == "postgres" {
+		if err := platformDB.Exec("COMMENT ON TABLE platform_settings IS " + platformComment).Error; err != nil {
+			return err
+		}
+	}
 	codeDB := global.DB
 	codeComment := "'邮箱注册及找回密码验证码'"
 	if codeDB.Dialector.Name() == "mysql" {

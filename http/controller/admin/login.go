@@ -31,11 +31,6 @@ type Login struct {
 // @Router /admin/login [post]
 // @Security token
 func (ct *Login) Login(c *gin.Context) {
-	if global.Config.App.DisablePwdLogin {
-		response.Fail(c, 101, response.TranslateMsg(c, "PwdLoginDisabled"))
-		return
-	}
-
 	// 检查登录限制
 	loginLimiter := global.LoginLimiter
 	clientIp := c.ClientIP()
@@ -183,10 +178,8 @@ func (ct *Login) LoginOptions(c *gin.Context) {
 	}
 	response.Success(c, gin.H{
 		"ops":          ops,
-		"register":     global.Config.App.Register,
+		"register":     service.RegistrationEnabled(),
 		"need_captcha": needCaptcha,
-		"disable_pwd":  global.Config.App.DisablePwdLogin,
-		"auto_oidc":    global.Config.App.DisablePwdLogin && len(ops) == 1 && ops[0] != model.OauthTypeWebauth,
 	})
 }
 

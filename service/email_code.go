@@ -40,8 +40,14 @@ func SendEmailCode(email, purpose string) error {
 	if purpose != EmailCodePurposeRegister && purpose != EmailCodePurposeReset {
 		return errors.New("InvalidEmailCodePurpose")
 	}
-	if purpose == EmailCodePurposeRegister && !Config.App.Register {
-		return errors.New("RegisterClosed")
+	if purpose == EmailCodePurposeRegister {
+		enabled, err := RegistrationState()
+		if err != nil {
+			return errors.New("OperationFailed")
+		}
+		if !enabled {
+			return errors.New("RegisterClosed")
+		}
 	}
 	if purpose == EmailCodePurposeRegister && AllService.UserService.InfoByEmail(email).Id > 0 {
 		return errors.New("EmailExists")
@@ -87,12 +93,19 @@ func ConsumeEmailCode(email, purpose, code string) error {
 	})
 }
 
-func (us *UserService) RegisterByEmail(email, password, code string, status model.StatusCode) (*model.User, error) {
+func (us *UserService) RegisterByEmail(email, password, code string) (*model.User, error) {
 	Lock.Lock("registerByEmail")
 	defer Lock.UnLock("registerByEmail")
 
 	var user *model.User
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		enabled, err := registrationStateTx(tx)
+		if err != nil {
+			return errors.New("OperationFailed")
+		}
+		if !enabled {
+			return errors.New("RegisterClosed")
+		}
 		if err := consumeEmailCodeTx(tx, email, EmailCodePurposeRegister, code); err != nil {
 			return err
 		}
@@ -107,9 +120,6 @@ func (us *UserService) RegisterByEmail(email, password, code string, status mode
 			}
 		}
 		isAdmin := count == 0
-		if isAdmin {
-			status = model.COMMON_STATUS_ENABLE
-		}
 		hashed, err := encryptPassword(password)
 		if err != nil {
 			return err
@@ -121,11 +131,21 @@ func (us *UserService) RegisterByEmail(email, password, code string, status mode
 			Nickname: email,
 			GroupId:  model.DefaultUserGroupID,
 			IsAdmin:  &isAdmin,
-			Status:   status,
+			Status:   model.COMMON_STATUS_ENABLE,
 		}
 		return tx.Create(user).Error
 	})
 	return user, err
+}
+
+func registrationStateTx(tx *gorm.DB) (bool, error) {
+	var setting model.PlatformSetting
+	if err := tx.First(&setting, platformSettingID).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	return setting.RegisterEnabled, nil
 }
 
 func (us *UserService) ResetPasswordByEmail(email, password, code string) error {
