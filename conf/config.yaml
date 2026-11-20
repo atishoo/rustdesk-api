@@ -16,7 +16,7 @@ smtp:
   crypto: "ssl"
 
 admin:
-  title: "卡皮远控管理控制台"
+  title: "卡皮远控"
   hello-file: "./conf/admin/hello.html"  #优先使用file
   hello: ""
   # ID Server and Relay Server ports https://github.com/lejianwen/rustdesk-api/issues/257
