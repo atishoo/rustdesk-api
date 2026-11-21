@@ -69,11 +69,20 @@
 
 在 `capylink.device-credential-key` 配置独立的 32 字节加密密钥（标准 Base64 编码），或设置 `CAPYLINK_API_CAPYLINK_DEVICE_CREDENTIAL_KEY`。例如使用 `openssl rand -base64 32` 生成。留空时关闭此功能，格式错误时 API 拒绝启动。
 
+使用本仓库的 Compose 部署时，仅更新镜像仍默认关闭免输密码。按以下步骤启用：
+
+1. 执行一次 `openssl rand -base64 32`，将结果保存到 Compose 同目录的 `.env`：`CAPYLINK_API_CAPYLINK_DEVICE_CREDENTIAL_KEY=生成的密钥`。后续部署继续使用此值。
+2. 两端原生 App 都更新到包含同账号免密功能的版本，配置同一部署的 API 地址（支持 HTTP 和 HTTPS）和正确的 ID Server 公钥。
+3. 执行 `docker compose up -d --force-recreate capylink-api`，重建 API 容器以应用配置。
+4. 两端 App 登录同一账号；升级前已登录的 App 先退出账号再重新登录。保持被控端 App 运行，等待下一次凭据刷新（最多约 30 秒）后连接。仅在 Web 控制台登录不能代替 App 登录。
+
+被控端目前支持新版 Flutter 桌面 App 和 Android App；旧版 Sciter 客户端（包括 Windows 32 位版本）不会上传凭据。账号能登录不代表已启用设备免输密码。
+
 两端原生 App 须指向同一部署，并配置正确的 ID Server 公钥。登录同一账号、设备 ID 与 UUID 完整且已确认归属后，被控端为该账号生成独立随机连接凭据，API 使用 AES-256-GCM 加密后保存到上传设备的登录会话。它不读取或修改设备永久密码。连接时根据账号归属、完整设备身份、设备公钥和当前挑战盐取得凭据，继续遵循被控端的连接确认、权限和 2FA 设置。
 
 App 每 30 秒刷新凭据；API 与被控端的授权租约均为 90 秒。退出账号时，被控端立即清除本地凭据，并尝试删除云端密文；GUI 进程退出、网络中断或账号失效导致无法续期时，凭据最多再有效 90 秒。退出或撤销上传会话、删除设备、修改设备 ID/UUID 后，API 不再提供该会话的凭据。已下发的副本无法远程销毁，控制端只在当前连接内存中使用，失效由被控端租约控制。
 
-这些接口只接受 HTTPS，或直接连接回环地址的 HTTP。TLS 由代理终止时，在 `gin.trust-proxy` 显式登记直接代理，由代理覆盖 `X-Forwarded-Proto`。API 加密密钥只用于服务端保存密文；更换密钥后，在线 App 重新上传才会恢复免输密码。
+这些接口支持 HTTP 和 HTTPS。API 加密密钥只用于服务端保存密文；更换密钥后，在线 App 重新上传才会恢复免输密码。
 
 ### Web Admin:
 

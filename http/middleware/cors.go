@@ -44,29 +44,11 @@ func isTrustedProxy(remoteAddr string) bool {
 	return false
 }
 
-// DeviceCredentialTransport limits credential exchange to TLS or a direct local connection.
 func DeviceCredentialTransport() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
-		if c.Request.TLS != nil || (c.GetHeader("X-Forwarded-Proto") == "https" && isTrustedProxy(c.Request.RemoteAddr)) {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
-			c.Next()
-			return
-		}
-		remote, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-		address := net.ParseIP(remote)
-		host := (&url.URL{Host: c.Request.Host}).Hostname()
-		localHost := strings.EqualFold(host, "localhost")
-		if ip := net.ParseIP(host); ip != nil {
-			localHost = ip.IsLoopback()
-		}
-		if err == nil && address != nil && address.IsLoopback() && localHost &&
-			c.GetHeader("X-Forwarded-For") == "" && c.GetHeader("Forwarded") == "" && c.GetHeader("X-Forwarded-Host") == "" {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
-			c.Next()
-			return
-		}
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "device credentials require HTTPS or a direct loopback connection"})
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+		c.Next()
 	}
 }
 
