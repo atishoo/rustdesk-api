@@ -48,6 +48,7 @@ postgresql:
   time-zone: "Asia/Shanghai" # Time zone for PostgreSQL connection
 
 capylink:
+  device-credential-key: "" # 标准 Base64 编码的 32 字节独立加密密钥；为空时关闭同账号设备免输密码。
   id-server: "192.168.1.66:21116"
   # must-login: false # Set to true or false to match an external ID Server. Leave unset to query a local ID Server.
   relay-server: "192.168.1.66:21117"

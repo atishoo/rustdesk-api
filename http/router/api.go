@@ -74,6 +74,13 @@ func ApiInit(g *gin.Engine) {
 
 	frg.Use(middleware.RustAuth())
 	{
+		peer := &api.Peer{}
+		credential := frg.Group("/device-credential", middleware.DeviceCredentialTransport())
+		credential.PUT("", peer.DeviceCredential)
+		credential.DELETE("", peer.DeviceCredential)
+		credential.POST("/resolve", peer.ResolveDeviceCredential)
+	}
+	{
 		u := &api.User{}
 		frg.GET("/user/info", u.Info)
 		frg.POST("/currentUser", u.Info)

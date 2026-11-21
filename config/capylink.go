@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/ed25519"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -29,6 +30,18 @@ type Capylink struct {
 	WebclientMagicQueryonline int    `mapstructure:"webclient-magic-queryonline"`
 	WebclientShareApiServer   string `mapstructure:"webclient-share-api-server"`
 	WsHost                    string `mapstructure:"ws-host"`
+	DeviceCredentialKey       string `mapstructure:"device-credential-key"`
+}
+
+func (rd *Capylink) DeviceCredentialKeyBytes() ([]byte, error) {
+	if rd.DeviceCredentialKey == "" {
+		return nil, nil
+	}
+	key, err := base64.StdEncoding.Strict().DecodeString(rd.DeviceCredentialKey)
+	if err != nil || len(key) != 32 || base64.StdEncoding.EncodeToString(key) != rd.DeviceCredentialKey {
+		return nil, fmt.Errorf("capylink.device-credential-key must be a standard Base64-encoded 32-byte key")
+	}
+	return key, nil
 }
 
 func (rd *Capylink) LoadKeyFile() {

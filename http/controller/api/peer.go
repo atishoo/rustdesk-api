@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -8,10 +9,70 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	requstform "github.com/lejianwen/rustdesk-api/v2/http/request/api"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 )
 
 type Peer struct {
+}
+
+func (p *Peer) DeviceCredential(c *gin.Context) {
+	var input struct {
+		Id   model.DeviceIdentity `json:"id"`
+		Uuid model.DeviceIdentity `json:"uuid"`
+		service.DeviceCredential
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || input.Id == "" || input.Uuid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "complete device identity is required"})
+		return
+	}
+	token, _ := c.Get("token")
+	var err error
+	if c.Request.Method == http.MethodDelete {
+		err = service.AllService.PeerService.ClearDeviceCredential(token.(string), input.Id, input.Uuid)
+	} else {
+		err = service.AllService.PeerService.StoreDeviceCredential(token.(string), input.Id, input.Uuid, input.DeviceCredential)
+	}
+	if err != nil {
+		deviceCredentialError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (p *Peer) ResolveDeviceCredential(c *gin.Context) {
+	var input struct {
+		Id      model.DeviceIdentity `json:"id"`
+		Salt    string               `json:"salt"`
+		PeerKey string               `json:"peer_key"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid device credential request"})
+		return
+	}
+	token, _ := c.Get("token")
+	credential, err := service.AllService.PeerService.ResolveDeviceCredential(token.(string), input.Id, input.Salt, input.PeerKey)
+	if err != nil {
+		deviceCredentialError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, credential)
+}
+
+func deviceCredentialError(c *gin.Context, err error) {
+	status := http.StatusInternalServerError
+	message := "could not access device credential"
+	switch {
+	case errors.Is(err, service.ErrDeviceCredentialDisabled):
+		status, message = http.StatusServiceUnavailable, err.Error()
+	case errors.Is(err, service.ErrDeviceCredentialForbidden):
+		status, message = http.StatusForbidden, err.Error()
+	case errors.Is(err, service.ErrDeviceCredentialNotFound):
+		status, message = http.StatusNotFound, err.Error()
+	case errors.Is(err, service.ErrDeviceCredentialInvalid):
+		status, message = http.StatusBadRequest, err.Error()
+	}
+	c.JSON(status, gin.H{"error": message})
 }
 
 // SysInfo

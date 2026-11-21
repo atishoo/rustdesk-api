@@ -84,6 +84,7 @@ func Init(rowVal *Config, path string) *viper.Viper {
 	v.SetDefault("jwt.expire-duration", 168*time.Hour)
 	_ = v.BindEnv("capylink.must-login")
 	v.SetDefault("capylink.webclient-share-api-server", "")
+	v.SetDefault("capylink.device-credential-key", "")
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
 	err := v.ReadInConfig()
@@ -110,6 +111,9 @@ func Init(rowVal *Config, path string) *viper.Viper {
 	}
 	if rowVal.Jwt.Key != "" && rowVal.Jwt.ExpireDuration <= 0 {
 		panic("jwt.expire-duration must be positive when JWT is enabled")
+	}
+	if _, err := rowVal.Capylink.DeviceCredentialKeyBytes(); err != nil {
+		panic(err)
 	}
 	if address := strings.TrimSpace(rowVal.Capylink.WebclientShareApiServer); address != "" {
 		base, err := url.Parse(address)
