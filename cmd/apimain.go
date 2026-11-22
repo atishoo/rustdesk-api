@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const DatabaseVersion = 268
+const DatabaseVersion = 272
 
 // @title 管理系统API
 // @version 1.0
@@ -269,24 +269,6 @@ func DatabaseAutoUpdate() {
 			}
 		}
 
-		// 245迁移
-		if v.Version < 245 {
-			//oauths 表的 oauth_type 字段设置为 op同样的值
-			db.Exec("update oauths set oauth_type = op")
-			db.Exec("update oauths set issuer = 'https://accounts.google.com' where op = 'google'")
-			db.Exec("update user_thirds set oauth_type = third_type, op = third_type")
-			//通过email迁移旧的google授权
-			uts := make([]model.UserThird, 0)
-			db.Where("oauth_type = ?", "google").Find(&uts)
-			for _, ut := range uts {
-				if ut.UserId > 0 {
-					db.Model(&model.User{}).Where("id = ?", ut.UserId).Update("email", ut.OpenId)
-				}
-			}
-		}
-		if v.Version < 246 {
-			db.Exec("update oauths set issuer = 'https://accounts.google.com' where op = 'google' and issuer is null")
-		}
 	}
 
 }
@@ -306,7 +288,6 @@ func Migrate(version uint) error {
 		&model.AuditConn{},
 		&model.AuditFile{},
 		&model.AddressBookCollection{},
-		&model.AddressBookCollectionRule{},
 		&model.ServerCmd{},
 		&model.DeviceGroup{},
 	); err != nil {
@@ -338,7 +319,7 @@ func Migrate(version uint) error {
 			return err
 		}
 	}
-	const shareRecordComment = "'Web Client 分享及对应的地址簿条目'"
+	const shareRecordComment = "'Web Client 分享及对应的地址簿或设备记录'"
 	shareDB := global.DB
 	dialect := shareDB.Dialector.Name()
 	if dialect == "mysql" {
@@ -349,6 +330,9 @@ func Migrate(version uint) error {
 	}
 	if dialect == "postgres" {
 		if err := shareDB.Exec("COMMENT ON TABLE share_records IS " + shareRecordComment).Error; err != nil {
+			return err
+		}
+		if err := shareDB.Exec("COMMENT ON COLUMN share_records.started_at IS '首次使用分享链接的时间'").Error; err != nil {
 			return err
 		}
 	}

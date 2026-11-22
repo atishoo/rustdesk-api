@@ -19,7 +19,7 @@ type DeviceGroup struct {
 // @Accept  json
 // @Produce  json
 // @Param id path int true "ID"
-// @Success 200 {object} response.Response{data=model.Group}
+// @Success 200 {object} response.Response{data=model.DeviceGroup}
 // @Failure 500 {object} response.Response
 // @Router /admin/device_group/detail/{id} [get]
 // @Security token
@@ -67,14 +67,14 @@ func (ct *DeviceGroup) Create(c *gin.Context) {
 }
 
 // List 列表
-// @Tags 群组
-// @Summary 群组列表
-// @Description 群组列表
+// @Tags 设备群组
+// @Summary 设备群组列表
+// @Description 设备群组列表
 // @Accept  json
 // @Produce  json
 // @Param page query int false "页码"
 // @Param page_size query int false "页大小"
-// @Success 200 {object} response.Response{data=model.GroupList}
+// @Success 200 {object} response.Response{data=model.DeviceGroupList}
 // @Failure 500 {object} response.Response
 // @Router /admin/device_group/list [get]
 // @Security token
@@ -95,7 +95,7 @@ func (ct *DeviceGroup) List(c *gin.Context) {
 // @Accept  json
 // @Produce  json
 // @Param body body admin.DeviceGroupForm true "群组信息"
-// @Success 200 {object} response.Response{data=model.Group}
+// @Success 200 {object} response.Response{data=model.DeviceGroup}
 // @Failure 500 {object} response.Response
 // @Router /admin/device_group/update [post]
 // @Security token

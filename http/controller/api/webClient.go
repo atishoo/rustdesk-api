@@ -1,13 +1,13 @@
 package api
 
 import (
-	"errors"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/http/response/api"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 )
 
@@ -72,24 +72,40 @@ func (i *WebClient) SharedPeer(c *gin.Context) {
 		return
 	}
 
-	ab, err := service.AllService.AddressBookService.ShareableEntry(sr.AddressBookRowId, sr.UserId, sr.PeerId)
-	if errors.Is(err, service.ErrWebClientExplicitServerTarget) || errors.Is(err, service.ErrWebClientDirectTarget) ||
-		errors.Is(err, service.ErrWebClientTargetWhitespace) || errors.Is(err, service.ErrWebClientEmptyTarget) {
-		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+	var peerUsername, peerHostname string
+	switch sr.Source {
+	case model.ShareSourceAddressBook:
+		entry, err := service.AllService.AddressBookService.ShareableEntry(sr.AddressBookRowId, sr.UserId, sr.PeerId)
+		if err != nil {
+			response.Fail(c, 101, "share source unavailable")
+			return
+		}
+		peerUsername = entry.Username
+		peerHostname = entry.Hostname
+	case model.ShareSourcePeer:
+		peer, err := service.AllService.AddressBookService.ShareablePeer(sr.AddressBookRowId, sr.UserId, sr.PeerId)
+		if err != nil {
+			response.Fail(c, 101, "share source unavailable")
+			return
+		}
+		peerUsername = peer.Username
+		peerHostname = peer.Hostname
+	default:
+		response.Fail(c, 101, "share source unavailable")
 		return
 	}
-	if err != nil {
-		response.Fail(c, 101, "peer not found")
+	if err := service.AllService.ShareRecordService.StartShare(sr); err != nil {
+		response.Fail(c, 101, "share unavailable")
 		return
 	}
-	if err := service.AllService.ServerCmdService.CheckAnonymousWebClientShare(); err != nil {
-		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+	if expiry := sr.ExpiryTime(); !expiry.IsZero() && expiry.Before(time.Now()) {
+		response.Fail(c, 101, "share expired")
 		return
 	}
 	pp := &api.WebClientPeerPayload{}
 	pp.FromShareRecord(sr)
-	pp.Info.Username = ab.Username
-	pp.Info.Hostname = ab.Hostname
+	pp.Info.Username = peerUsername
+	pp.Info.Hostname = peerHostname
 	response.Success(c, gin.H{
 		"id_server":    global.Config.Capylink.IdServer,
 		"relay_server": global.Config.Capylink.RelayServer,

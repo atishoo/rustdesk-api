@@ -34,7 +34,7 @@ func (a *Ab) Ab(c *gin.Context) {
 	user := service.AllService.UserService.CurUser(c)
 
 	al := service.AllService.AddressBookService.ListByUserIdAndCollectionId(user.Id, 0, 1, 1000)
-	tags := service.AllService.TagService.ListByUserIdAndCollectionId(user.Id, 0)
+	tags := service.AllService.TagService.ListByUserId(user.Id)
 
 	peers := al.AddressBooks
 	if peers == nil {
@@ -127,18 +127,13 @@ func (a *Ab) UpAb(c *gin.Context) {
 func (a *Ab) PTags(c *gin.Context) {
 	u := service.AllService.UserService.CurUser(c)
 	guid := c.Param("guid")
-	_, uid, cid, err := a.CheckGuid(u, guid)
+	_, uid, _, err := a.CheckGuid(u, guid)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserReadPrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-	tags := service.AllService.TagService.ListByUserIdAndCollectionId(uid, cid)
+	tags := service.AllService.TagService.ListByUserId(uid)
 	c.JSON(http.StatusOK, tags.Tags)
 }
 
@@ -164,20 +159,13 @@ func (a *Ab) TagAdd(c *gin.Context) {
 
 	u := service.AllService.UserService.CurUser(c)
 	guid := c.Param("guid")
-	_, uid, cid, err := a.CheckGuid(u, guid)
+	_, uid, _, err := a.CheckGuid(u, guid)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserWritePrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-
 	t.UserId = uid
-	t.CollectionId = cid
 	err = service.AllService.TagService.Create(t)
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		response.Error(c, response.TranslateMsg(c, "ItemExists"))
@@ -211,19 +199,13 @@ func (a *Ab) TagRename(c *gin.Context) {
 	}
 	u := service.AllService.UserService.CurUser(c)
 	guid := c.Param("guid")
-	_, uid, cid, err := a.CheckGuid(u, guid)
+	_, uid, _, err := a.CheckGuid(u, guid)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserWritePrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-
-	tag := service.AllService.TagService.InfoByUserIdAndNameAndCollectionId(uid, t.Old, cid)
+	tag := service.AllService.TagService.InfoByUserIdAndName(uid, t.Old)
 	if tag == nil || tag.Id == 0 {
 		response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 		return
@@ -262,19 +244,13 @@ func (a *Ab) TagUpdate(c *gin.Context) {
 	}
 	u := service.AllService.UserService.CurUser(c)
 	guid := c.Param("guid")
-	_, uid, cid, err := a.CheckGuid(u, guid)
+	_, uid, _, err := a.CheckGuid(u, guid)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserWritePrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-
-	tag := service.AllService.TagService.InfoByUserIdAndNameAndCollectionId(uid, t.Name, cid)
+	tag := service.AllService.TagService.InfoByUserIdAndName(uid, t.Name)
 	if tag == nil || tag.Id == 0 {
 		response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 		return
@@ -311,20 +287,14 @@ func (a *Ab) TagDel(c *gin.Context) {
 	//fmt.Println(t)
 	u := service.AllService.UserService.CurUser(c)
 	guid := c.Param("guid")
-	_, uid, cid, err := a.CheckGuid(u, guid)
+	_, uid, _, err := a.CheckGuid(u, guid)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserFullControlPrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-
 	for _, name := range *t {
-		tag := service.AllService.TagService.InfoByUserIdAndNameAndCollectionId(uid, name, cid)
+		tag := service.AllService.TagService.InfoByUserIdAndName(uid, name)
 		if tag == nil || tag.Id == 0 {
 			response.Error(c, response.TranslateMsg(c, "ItemNotFound"))
 			return
@@ -389,78 +359,6 @@ func (a *Ab) Settings(c *gin.Context) {
 	})
 }
 
-// SharedProfiles
-// @Tags 地址[Personal]
-// @Summary 共享地址簿
-// @Description 共享
-// @Accept  json
-// @Produce  json
-// @Param current query int false "页码"
-// @Param pageSize query int false "每页数量"
-// @Success 200 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /ab/shared/profiles [post]
-// @Security BearerAuth
-func (a *Ab) SharedProfiles(c *gin.Context) {
-
-	var res []*api.SharedProfilesPayload
-
-	user := service.AllService.UserService.CurUser(c)
-	myAbCollectionList := service.AllService.AddressBookService.ListCollectionByUserId(user.Id)
-	for _, ab := range myAbCollectionList.AddressBookCollection {
-		res = append(res, &api.SharedProfilesPayload{
-			Guid:  a.ComposeGuid(user.GroupId, user.Id, ab.Id),
-			Name:  ab.Name,
-			Owner: user.Username,
-			Rule:  model.ShareAddressBookRuleRuleFullControl,
-		})
-	}
-
-	allAbIds := make(map[uint]int) //用map去重，并保留最大Rule
-	allUserIds := make(map[uint]*model.User)
-	rules := service.AllService.AddressBookService.CollectionReadRules(user)
-	for _, rule := range rules {
-		//先判断是否存在
-		r, ok := allAbIds[rule.CollectionId]
-		if ok {
-			//再判断权限大小
-			if r < rule.Rule {
-				allAbIds[rule.CollectionId] = rule.Rule
-			}
-		} else {
-			allAbIds[rule.CollectionId] = rule.Rule
-			allUserIds[rule.UserId] = nil
-		}
-
-	}
-	abids := utils.Keys(allAbIds)
-	collections := service.AllService.AddressBookService.ListCollectionByIds(abids)
-
-	ids := utils.Keys(allUserIds)
-	allUsers := service.AllService.UserService.ListByIds(ids)
-	for _, u := range allUsers {
-		allUserIds[u.Id] = u
-	}
-
-	for _, collection := range collections {
-		_u, ok := allUserIds[collection.UserId]
-		if !ok {
-			continue
-		}
-		res = append(res, &api.SharedProfilesPayload{
-			Guid:  a.ComposeGuid(_u.GroupId, _u.Id, collection.Id),
-			Name:  collection.Name,
-			Owner: _u.Username,
-			Rule:  allAbIds[collection.Id],
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"total": 0, //len(res),
-		"data":  res,
-	})
-}
-
 // ParseGuid
 func (a *Ab) ParseGuid(guid string) (gid, uid, cid uint) {
 	//用-切割 guid
@@ -503,21 +401,7 @@ func (a *Ab) CheckGuid(cu *model.User, guid string) (gid, uid, cid uint, err err
 		err = errors.New("ParamsError")
 		return
 	}
-	u := &model.User{}
-	if cu.Id == uid {
-		u = cu
-	} else {
-		u = service.AllService.UserService.InfoById(uid)
-	}
-	if u == nil || u.Id == 0 {
-		err = errors.New("ParamsError")
-		return
-	}
-	if u.GroupId != gid {
-		err = errors.New("ParamsError")
-		return
-	}
-	if cid == 0 && cu.Id != uid {
+	if cu.Id != uid || cu.GroupId != gid {
 		err = errors.New("ParamsError")
 		return
 	}
@@ -557,12 +441,6 @@ func (a *Ab) Peers(c *gin.Context) {
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserReadPrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-
 	al := service.AllService.AddressBookService.ListByUserIdAndCollectionId(uid, cid, 1, 1000)
 	c.JSON(http.StatusOK, gin.H{
 		"total":            al.Total,
@@ -597,12 +475,6 @@ func (a *Ab) PeerAdd(c *gin.Context) {
 	_, uid, cid, err := a.CheckGuid(u, guid)
 	if err != nil {
 		response.Error(c, response.TranslateMsg(c, err.Error()))
-		return
-	}
-
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserWritePrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
 		return
 	}
 
@@ -649,12 +521,6 @@ func (a *Ab) PeerDel(c *gin.Context) {
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserFullControlPrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
-
 	for _, id := range *f {
 		ab := service.AllService.AddressBookService.InfoByUserIdAndIdAndCid(uid, model.AddressBookTarget(id), cid)
 		if ab == nil || ab.RowId == 0 {
@@ -698,11 +564,6 @@ func (a *Ab) PeerUpdate(c *gin.Context) {
 		return
 	}
 
-	//check privileges
-	if !service.AllService.AddressBookService.CheckUserWritePrivilege(u, uid, cid) {
-		response.Error(c, response.TranslateMsg(c, "NoAccess"))
-		return
-	}
 	//fmt.Println(f)
 	//判断f["Id"]是否存在
 	fid, ok := f["id"].(string)

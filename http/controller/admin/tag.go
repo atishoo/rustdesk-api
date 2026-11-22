@@ -17,8 +17,7 @@ type Tag struct {
 
 func validTagOwner(tag *model.Tag) bool {
 	services := service.AllService
-	return tag.UserId != 0 && services.UserService.InfoById(tag.UserId).Id != 0 &&
-		(tag.CollectionId == 0 || services.AddressBookService.CheckCollectionOwner(tag.UserId, tag.CollectionId))
+	return tag.UserId != 0 && services.UserService.InfoById(tag.UserId).Id != 0
 }
 
 // Detail 标签
@@ -109,14 +108,8 @@ func (ct *Tag) List(c *gin.Context) {
 		return
 	}
 	res := service.AllService.TagService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
-		tx.Preload("Collection", func(txc *gorm.DB) *gorm.DB {
-			return txc.Select("id,name")
-		})
 		if query.UserId > 0 {
 			tx.Where("user_id = ?", query.UserId)
-		}
-		if query.CollectionId != nil && *query.CollectionId >= 0 {
-			tx.Where("collection_id = ?", query.CollectionId)
 		}
 	})
 	response.Success(c, res)

@@ -116,8 +116,6 @@ func PersonalRoutes(frg *gin.RouterGroup) {
 		frg.POST("/ab/personal", ab.Personal)
 		//[method:POST] [uri:/api/ab/settings] Request
 		frg.POST("/ab/settings", ab.Settings)
-		// [method:POST] [uri:/api/ab/shared/profiles?current=1&pageSize=100]
-		frg.POST("/ab/shared/profiles", ab.SharedProfiles)
 		//[method:POST] [uri:/api/ab/peers?current=1&pageSize=100&ab=1]
 		frg.POST("/ab/peers", ab.Peers)
 		// [method:POST] [uri:/api/ab/tags/1]

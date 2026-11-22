@@ -11,7 +11,7 @@ type UserForm struct {
 	//Password string           `json:"password" validate:"required,gte=4,lte=20"`
 	Nickname *string          `json:"nickname"`
 	Avatar   string           `json:"avatar"`
-	GroupId  uint             `json:"group_id" validate:"required"`
+	GroupId  uint             `json:"group_id"`
 	IsAdmin  *bool            `json:"is_admin" `
 	Status   model.StatusCode `json:"status" validate:"required,oneof=1 2"`
 	Remark   *string          `json:"remark"`
@@ -41,6 +41,9 @@ func (uf *UserForm) ToUser() *model.User {
 	}
 	user.Avatar = uf.Avatar
 	user.GroupId = uf.GroupId
+	if user.Id == 0 && user.GroupId == 0 {
+		user.GroupId = model.DefaultUserGroupID
+	}
 	user.IsAdmin = uf.IsAdmin
 	user.Status = uf.Status
 	if uf.Remark != nil {

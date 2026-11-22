@@ -2,6 +2,7 @@ package my
 
 import (
 	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
@@ -33,15 +34,8 @@ func (ct *Tag) List(c *gin.Context) {
 		return
 	}
 	u := service.AllService.UserService.CurUser(c)
-	query.UserId = int(u.Id)
 	res := service.AllService.TagService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
-		tx.Preload("Collection", func(txc *gorm.DB) *gorm.DB {
-			return txc.Select("id,name")
-		})
-		tx.Where("user_id = ?", query.UserId)
-		if query.CollectionId != nil && *query.CollectionId >= 0 {
-			tx.Where("collection_id = ?", query.CollectionId)
-		}
+		tx.Where("user_id = ?", u.Id).Order("name asc")
 	})
 	response.Success(c, res)
 }
@@ -71,10 +65,6 @@ func (ct *Tag) Create(c *gin.Context) {
 	t := f.ToTag()
 	u := service.AllService.UserService.CurUser(c)
 	t.UserId = u.Id
-	if t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId) {
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
-		return
-	}
 	err := service.AllService.TagService.Create(t)
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
@@ -130,10 +120,6 @@ func (ct *Tag) Update(c *gin.Context) {
 	}
 
 	t := f.ToTag()
-	if t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(t.UserId, t.CollectionId) {
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
-		return
-	}
 	err := service.AllService.TagService.Update(ex, t)
 	if errors.Is(err, service.ErrReferencedTagMove) {
 		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))

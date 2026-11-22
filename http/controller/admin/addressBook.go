@@ -8,6 +8,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"gorm.io/gorm"
 )
@@ -127,7 +128,7 @@ func (ct *AddressBook) BatchCreate(c *gin.Context) {
 			continue
 		}
 		for _, ft := range f.Tags {
-			exTag := service.AllService.TagService.InfoByUserIdAndNameAndCollectionId(fu, ft, 0)
+			exTag := service.AllService.TagService.InfoByUserIdAndName(fu, ft)
 			if exTag.Id == 0 {
 				service.AllService.TagService.Create(&model.Tag{
 					UserId: fu,
@@ -326,14 +327,9 @@ func (ct *AddressBook) ShareByWebClient(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
-	m := f.ToShareRecord()
+	m := f.ToShareRecord(model.ShareSourceAddressBook)
 	m.UserId = u.Id
 	err = service.AllService.AddressBookService.ShareByWebClient(m)
-	if errors.Is(err, service.ErrWebClientShareRequiresLogin) || errors.Is(err, service.ErrWebClientLoginPolicyUnknown) ||
-		errors.Is(err, service.ErrWebClientMissingIDServer) {
-		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
-		return
-	}
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

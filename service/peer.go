@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -303,6 +304,60 @@ func (ps *PeerService) Update(u *model.Peer, fields ...string) error {
 		return DB.Transaction(update)
 	}
 	return update(DB)
+}
+
+// BatchUpdateTags replaces the account tags for a set of devices.
+func (ps *PeerService) BatchUpdateTags(peers []*model.Peer, tags []string) error {
+	if len(peers) == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	encoded, err := json.Marshal(tags)
+	if err != nil {
+		return err
+	}
+	ids := make([]uint, 0, len(peers))
+	expectedOwners := make(map[uint]uint, len(peers))
+	owners := make([]uint, 0, len(peers))
+	for _, peer := range peers {
+		if peer == nil || peer.RowId == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if _, exists := expectedOwners[peer.RowId]; exists {
+			return gorm.ErrDuplicatedKey
+		}
+		ids = append(ids, peer.RowId)
+		expectedOwners[peer.RowId] = peer.UserId
+		owners = append(owners, peer.UserId)
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockAddressBookOwners(tx, owners...); err != nil {
+			return err
+		}
+		var current []model.Peer
+		if err := tx.Model(&model.Peer{}).Select("row_id", "user_id").Where("row_id IN ?", ids).
+			Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Find(&current).Error; err != nil {
+			return err
+		}
+		if len(current) != len(expectedOwners) {
+			return gorm.ErrRecordNotFound
+		}
+		checked := make(map[uint]bool, len(owners))
+		for _, peer := range current {
+			if expectedOwners[peer.RowId] != peer.UserId {
+				return gorm.ErrRecordNotFound
+			}
+			if !checked[peer.UserId] {
+				if err := validateAccountTags(tx, peer.UserId, encoded); err != nil {
+					return err
+				}
+				checked[peer.UserId] = true
+			}
+		}
+		return tx.Model(&model.Peer{}).Where("row_id IN ?", ids).Update("tags", encoded).Error
+	})
 }
 
 func deletePeerTokens(tx *gorm.DB, peers ...model.Peer) error {

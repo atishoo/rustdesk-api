@@ -154,11 +154,10 @@ type AddressBookQuery struct {
 }
 
 type ShareByWebClientForm struct {
-	Id           model.AddressBookTarget `json:"id" validate:"required"`
-	RowId        uint                    `json:"row_id" validate:"required,gt=0" minimum:"1"`
-	PasswordType string                  `json:"password_type" validate:"required,oneof=once fixed"` //只能是once,fixed
-	Password     string                  `json:"password" validate:"required"`
-	Expire       int64                   `json:"expire"`
+	Id       model.AddressBookTarget `json:"id" validate:"required"`
+	RowId    uint                    `json:"row_id" validate:"required,gt=0" minimum:"1"`
+	Password string                  `json:"password" validate:"required"`
+	Expire   int64                   `json:"expire" validate:"oneof=0 300 1800 3600 86400"`
 }
 
 func (sbwcf ShareByWebClientForm) HasValidPassword() bool {
@@ -178,12 +177,12 @@ func (sbwcf ShareByWebClientForm) HasValidPassword() bool {
 	return err == nil && len(decoded) != 0 && utf8.Valid(decoded)
 }
 
-func (sbwcf ShareByWebClientForm) ToShareRecord() *model.ShareRecord {
+func (sbwcf ShareByWebClientForm) ToShareRecord(source model.ShareSource) *model.ShareRecord {
 	return &model.ShareRecord{
 		UserId:           0,
+		Source:           source,
 		PeerId:           sbwcf.Id,
 		AddressBookRowId: sbwcf.RowId,
-		PasswordType:     sbwcf.PasswordType,
 		Password:         sbwcf.Password,
 		Expire:           sbwcf.Expire,
 	}
@@ -198,13 +197,6 @@ type AddressBookCollectionQuery struct {
 type AddressBookCollectionSimpleListQuery struct {
 	UserIds []uint `form:"user_ids"`
 }
-type AddressBookCollectionRuleQuery struct {
-	UserId       int `form:"user_id"`
-	CollectionId int `form:"collection_id"`
-	IsMy         int `form:"is_my"`
-	PageQuery
-}
-
 type BatchCreateFromPeersForm struct {
 	CollectionId uint     `json:"collection_id"`
 	PeerIds      []uint   `json:"peer_ids"`

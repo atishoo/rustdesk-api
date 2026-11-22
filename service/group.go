@@ -48,9 +48,7 @@ func (us *GroupService) Delete(u *model.Group) error {
 		return ErrDefaultUserGroup
 	}
 	users := DB.Model(&model.User{}).Select("1").Where("group_id = ?", u.Id)
-	rules := DB.Model(&model.AddressBookCollectionRule{}).Select("1").
-		Where("type = ? AND to_id = ?", model.ShareAddressBookRuleTypeGroup, u.Id)
-	result := DB.Where("NOT EXISTS (?) AND NOT EXISTS (?)", users, rules).Delete(u)
+	result := DB.Where("NOT EXISTS (?)", users).Delete(u)
 	if result.Error != nil {
 		return result.Error
 	}

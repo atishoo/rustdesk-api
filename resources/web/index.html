@@ -34,7 +34,7 @@
     <link rel="manifest" href="manifest.json">
     <script src="/webclient-config/index.js"></script>
     <script src="ogvjs-1.8.6/ogv.js"></script>
-    <script type="module" crossorigin src="js/dist/index.js?v=9e4ccd72"></script>
+    <script type="module" crossorigin src="js/dist/index.js?v=537b1c8a"></script>
     <script>
     </script>
     <link rel="modulepreload" href="js/dist/vendor.js?v=dfb97bdf">
@@ -98,7 +98,7 @@
      application. For more information, see:
      https://developers.google.com/web/fundamentals/primers/service-workers -->
 <script>
-    var serviceWorkerVersion = 'cefdf7da5e';
+    var serviceWorkerVersion = 'cefdf7da5f';
     var scriptLoaded = false;
     var shareLaunch = window.location.hash.startsWith('#/?')
         && new URLSearchParams(window.location.hash.slice(3)).has('share_token');
@@ -108,11 +108,8 @@
             return;
         }
         scriptLoaded = true;
-        if (shareLaunch && !await window.capylinkSharedTargetReady) {
-            const loading = document.querySelector('.loading');
-            loading.textContent = '分享链接不可用或已过期，请刷新重试或联系分享者重新生成。';
-            loading.setAttribute('role', 'alert');
-            return;
+        if (shareLaunch && window.capylinkSharedTargetReady) {
+            await window.capylinkSharedTargetReady;
         }
         var scriptTag = document.createElement('script');
         scriptTag.src = 'main.dart.js';

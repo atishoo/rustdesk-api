@@ -390,54 +390,6 @@ const docTemplateapi = `{
                 }
             }
         },
-        "/ab/shared/profiles": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "共享",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址[Personal]"
-                ],
-                "summary": "共享地址簿",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "current",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "每页数量",
-                        "name": "pageSize",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/ab/tag/add/{guid}": {
             "post": {
                 "security": [
@@ -1560,38 +1512,9 @@ const docTemplateapi = `{
                 }
             }
         },
-        "model.AddressBookCollection": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "user_id": {
-                    "type": "integer"
-                }
-            }
-        },
         "model.Tag": {
             "type": "object",
             "properties": {
-                "collection": {
-                    "$ref": "#/definitions/model.AddressBookCollection"
-                },
-                "collection_id": {
-                    "type": "integer"
-                },
                 "color": {
                     "description": "color 是flutter的颜色值,从0x00000000 到 0xFFFFFFFF; 前两位表示透明度，后面6位表示颜色, 可以转成rgba",
                     "type": "integer"

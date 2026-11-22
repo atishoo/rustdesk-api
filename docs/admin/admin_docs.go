@@ -689,298 +689,6 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "/admin/address_book_collection_rule/create": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "创建地址簿规则",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿规则"
-                ],
-                "summary": "创建地址簿规则",
-                "parameters": [
-                    {
-                        "description": "地址簿规则信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollection"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book_collection_rule/delete": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则删除",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿规则"
-                ],
-                "summary": "地址簿规则删除",
-                "parameters": [
-                    {
-                        "description": "地址簿规则信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book_collection_rule/detail/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则详情",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿规则"
-                ],
-                "summary": "地址簿规则详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book_collection_rule/list": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿规则"
-                ],
-                "summary": "地址簿规则列表",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "页大小",
-                        "name": "page_size",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "是否是我的",
-                        "name": "is_my",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "用户id",
-                        "name": "user_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "地址簿集合id",
-                        "name": "collection_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollectionList"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book_collection_rule/update": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则编辑",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿规则"
-                ],
-                "summary": "地址簿规则编辑",
-                "parameters": [
-                    {
-                        "description": "地址簿规则信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollection"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/audit_conn/batchDelete": {
             "post": {
                 "security": [
@@ -1548,7 +1256,7 @@ const docTemplateadmin = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/model.Group"
+                                            "$ref": "#/definitions/model.DeviceGroup"
                                         }
                                     }
                                 }
@@ -1571,7 +1279,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "群组列表",
+                "description": "设备群组列表",
                 "consumes": [
                     "application/json"
                 ],
@@ -1579,9 +1287,9 @@ const docTemplateadmin = `{
                     "application/json"
                 ],
                 "tags": [
-                    "群组"
+                    "设备群组"
                 ],
-                "summary": "群组列表",
+                "summary": "设备群组列表",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1608,7 +1316,7 @@ const docTemplateadmin = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/model.GroupList"
+                                            "$ref": "#/definitions/model.DeviceGroupList"
                                         }
                                     }
                                 }
@@ -1665,7 +1373,7 @@ const docTemplateadmin = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/model.Group"
+                                            "$ref": "#/definitions/model.DeviceGroup"
                                         }
                                     }
                                 }
@@ -1758,280 +1466,6 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "/admin/group/create": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "创建群组",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "群组"
-                ],
-                "summary": "创建群组",
-                "parameters": [
-                    {
-                        "description": "群组信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.GroupForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.Group"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/group/delete": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "群组删除",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "群组"
-                ],
-                "summary": "群组删除",
-                "parameters": [
-                    {
-                        "description": "群组信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.GroupForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/group/detail/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "群组详情",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "群组"
-                ],
-                "summary": "群组详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.Group"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/group/list": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "群组列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "群组"
-                ],
-                "summary": "群组列表",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "页大小",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.GroupList"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/group/update": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "群组编辑",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "群组"
-                ],
-                "summary": "群组编辑",
-                "parameters": [
-                    {
-                        "description": "群组信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.GroupForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.Group"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/login": {
             "post": {
                 "security": [
@@ -2090,7 +1524,7 @@ const docTemplateadmin = `{
             }
         },
         "/admin/login-options": {
-            "post": {
+            "get": {
                 "description": "登录选项",
                 "consumes": [
                     "application/json"
@@ -2805,243 +2239,6 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "/admin/my/address_book_collection_rule/create": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "创建地址簿规则",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "我的地址簿规则"
-                ],
-                "summary": "创建地址簿规则",
-                "parameters": [
-                    {
-                        "description": "地址簿规则信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollection"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/my/address_book_collection_rule/delete": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则删除",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "我的地址簿规则"
-                ],
-                "summary": "地址簿规则删除",
-                "parameters": [
-                    {
-                        "description": "地址簿规则信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/my/address_book_collection_rule/list": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "我的地址簿规则"
-                ],
-                "summary": "地址簿规则列表",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "页大小",
-                        "name": "page_size",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "是否是我的",
-                        "name": "is_my",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "用户id",
-                        "name": "user_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "地址簿集合id",
-                        "name": "collection_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollectionList"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/my/address_book_collection_rule/update": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿规则编辑",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "我的地址簿规则"
-                ],
-                "summary": "地址簿规则编辑",
-                "parameters": [
-                    {
-                        "description": "地址簿规则信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.AddressBookCollectionRule"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBookCollection"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/my/login_log/batchDelete": {
             "post": {
                 "security": [
@@ -3187,6 +2384,51 @@ const docTemplateadmin = `{
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/my/peer/batchUpdateTags": {
+            "post": {
+                "security": [
+                    {
+                        "token": []
+                    }
+                ],
+                "description": "批量更新当前账号设备的标签",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "我的设备"
+                ],
+                "summary": "批量更新设备标签",
+                "parameters": [
+                    {
+                        "description": "设备标签",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.BatchUpdateTagsForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "500": {
@@ -3961,11 +3203,7 @@ const docTemplateadmin = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "code": { "type": "string" },
-                                "ticket": { "type": "string" }
-                            }
+                            "$ref": "#/definitions/api.OidcAuthQuery"
                         }
                     }
                 ],
@@ -5589,6 +4827,23 @@ const docTemplateadmin = `{
                 }
             }
         },
+        "admin.BatchUpdateTagsForm": {
+            "type": "object",
+            "properties": {
+                "row_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "admin.ChangeCurPasswordForm": {
             "type": "object",
             "required": [
@@ -5617,23 +4872,6 @@ const docTemplateadmin = `{
                 },
                 "name": {
                     "type": "string"
-                }
-            }
-        },
-        "admin.GroupForm": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "integer"
                 }
             }
         },
@@ -5737,6 +4975,9 @@ const docTemplateadmin = `{
         "admin.PeerForm": {
             "type": "object",
             "properties": {
+                "alias": {
+                    "type": "string"
+                },
                 "cpu": {
                     "type": "string"
                 },
@@ -5851,7 +5092,6 @@ const docTemplateadmin = `{
             "required": [
                 "id",
                 "password",
-                "password_type",
                 "row_id"
             ],
             "properties": {
@@ -5863,14 +5103,6 @@ const docTemplateadmin = `{
                 },
                 "password": {
                     "type": "string"
-                },
-                "password_type": {
-                    "description": "只能是once,fixed",
-                    "type": "string",
-                    "enum": [
-                        "once",
-                        "fixed"
-                    ]
                 },
                 "row_id": {
                     "type": "integer",
@@ -5896,9 +5128,6 @@ const docTemplateadmin = `{
                 "name"
             ],
             "properties": {
-                "collection_id": {
-                    "type": "integer"
-                },
                 "color": {
                     "type": "integer"
                 },
@@ -5925,7 +5154,6 @@ const docTemplateadmin = `{
                     "type": "string"
                 },
                 "email": {
-                    "description": "validate:\"required,email\" email不强制",
                     "type": "string"
                 },
                 "group_id": {
@@ -5939,6 +5167,9 @@ const docTemplateadmin = `{
                 },
                 "nickname": {
                     "description": "Password string           ` + "`" + `json:\"password\" validate:\"required,gte=4,lte=20\"` + "`" + `",
+                    "type": "string"
+                },
+                "remark": {
                     "type": "string"
                 },
                 "status": {
@@ -6021,6 +5252,23 @@ const docTemplateadmin = `{
                     "items": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "api.OidcAuthQuery": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "ticket": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
                 }
             }
         },
@@ -6163,47 +5411,6 @@ const docTemplateadmin = `{
                     "type": "integer"
                 },
                 "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "model.AddressBookCollectionRule": {
-            "type": "object",
-            "required": [
-                "collection_id",
-                "rule",
-                "to_id",
-                "type"
-            ],
-            "properties": {
-                "collection_id": {
-                    "type": "integer"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "rule": {
-                    "description": "0: 无 1: 读 2: 读写  3: 完全控制",
-                    "type": "integer",
-                    "maximum": 3,
-                    "minimum": 1
-                },
-                "to_id": {
-                    "type": "integer"
-                },
-                "type": {
-                    "description": "1: 个人 2: 群组",
-                    "type": "integer",
-                    "maximum": 2,
-                    "minimum": 1
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "user_id": {
                     "type": "integer"
                 }
             }
@@ -6373,33 +5580,13 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "model.Group": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "model.GroupList": {
+        "model.DeviceGroupList": {
             "type": "object",
             "properties": {
                 "list": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.Group"
+                        "$ref": "#/definitions/model.DeviceGroup"
                     }
                 },
                 "page": {
@@ -6481,6 +5668,7 @@ const docTemplateadmin = `{
             "type": "object",
             "properties": {
                 "auto_register": {
+                    "description": "RedirectUrl  string ` + "`" + `json:\"redirect_url\"` + "`" + `",
                     "type": "boolean"
                 },
                 "client_id": {
@@ -6541,6 +5729,9 @@ const docTemplateadmin = `{
         "model.Peer": {
             "type": "object",
             "properties": {
+                "alias": {
+                    "type": "string"
+                },
                 "ambiguous_id": {
                     "description": "仅凭 ID 无法定位到此设备，仅在设备列表返回",
                     "type": "boolean"
@@ -6578,6 +5769,12 @@ const docTemplateadmin = `{
                 },
                 "row_id": {
                     "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "updated_at": {
                     "type": "string"
@@ -6637,12 +5834,6 @@ const docTemplateadmin = `{
         "model.Tag": {
             "type": "object",
             "properties": {
-                "collection": {
-                    "$ref": "#/definitions/model.AddressBookCollection"
-                },
-                "collection_id": {
-                    "type": "integer"
-                },
                 "color": {
                     "description": "color 是flutter的颜色值,从0x00000000 到 0xFFFFFFFF; 前两位表示透明度，后面6位表示颜色, 可以转成rgba",
                     "type": "integer"
@@ -6706,6 +5897,9 @@ const docTemplateadmin = `{
                     "type": "boolean"
                 },
                 "nickname": {
+                    "type": "string"
+                },
+                "remark": {
                     "type": "string"
                 },
                 "status": {

@@ -126,7 +126,7 @@ func (ct *User) Update(c *gin.Context) {
 		return
 	}
 	u := f.ToUser()
-	fields := []string{"username", "group_id", "status"}
+	fields := []string{"username", "status"}
 	if f.IsAdmin != nil {
 		fields = append(fields, "is_admin")
 	}
@@ -333,16 +333,6 @@ func (ct *User) MyOauth(c *gin.Context) {
 		res = append(res, item)
 	}
 	response.Success(c, res)
-}
-
-// groupUsers
-func (ct *User) GroupUsers(c *gin.Context) {
-	aG := service.AllService.GroupService.List(1, 999, nil)
-	aU := service.AllService.UserService.List(1, 9999, nil)
-	response.Success(c, gin.H{
-		"groups": aG.Groups,
-		"users":  aU.Users,
-	})
 }
 
 // EmailCode sends a one-time verification code for registration or password reset.

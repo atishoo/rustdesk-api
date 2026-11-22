@@ -83,26 +83,3 @@ type AddressBookCollectionList struct {
 	AddressBookCollection []*AddressBookCollection `json:"list"`
 	Pagination
 }
-type AddressBookCollectionRule struct {
-	IdModel
-	UserId       uint `json:"user_id" gorm:"default:0;not null;"`
-	CollectionId uint `json:"collection_id" gorm:"default:0;not null;index" validate:"required"`
-	Rule         int  `json:"rule" gorm:"default:0;not null;" validate:"required,gte=1,lte=3"` // 0: 无 1: 读 2: 读写  3: 完全控制
-	Type         int  `json:"type" gorm:"default:1;not null;" validate:"required,gte=1,lte=2"` // 1: 个人 2: 群组
-	ToId         uint `json:"to_id" gorm:"default:0;not null;" validate:"required,gt=0"`
-	TimeModel
-}
-type AddressBookCollectionRuleList struct {
-	AddressBookCollectionRule []*AddressBookCollectionRule `json:"list"`
-	Pagination
-}
-
-const (
-	ShareAddressBookRuleTypePersonal = 1
-	ShareAddressBookRuleTypeGroup    = 2
-)
-const (
-	ShareAddressBookRuleRuleRead        = 1
-	ShareAddressBookRuleRuleReadWrite   = 2
-	ShareAddressBookRuleRuleFullControl = 3
-)

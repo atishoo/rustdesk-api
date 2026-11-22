@@ -5,7 +5,6 @@ services:
     command: hbbs -r hbbr:21117
     environment:
       ENABLE_TCP_REGISTER: ${ENABLE_TCP_REGISTER:-Y}
-      MUST_LOGIN: ${MUST_LOGIN:-N}
       CAPYLINK_API_JWT_KEY: ${CAPYLINK_API_JWT_KEY:-}
     ports:
       - "21115:21115"

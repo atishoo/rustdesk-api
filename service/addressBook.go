@@ -26,9 +26,6 @@ var (
 	ErrWebClientDirectTarget         = errors.New("WebClientDirectTarget")
 	ErrWebClientTargetWhitespace     = errors.New("WebClientTargetWhitespace")
 	ErrWebClientEmptyTarget          = errors.New("WebClientEmptyTarget")
-	ErrWebClientMissingIDServer      = errors.New("WebClientMissingIDServer")
-	ErrWebClientShareRequiresLogin   = errors.New("WebClientShareRequiresLogin")
-	ErrWebClientLoginPolicyUnknown   = errors.New("WebClientLoginPolicyUnknown")
 	ErrUnsupportedAddressBookPeerID  = errors.New("UnsupportedAddressBookPeerID")
 )
 
@@ -233,7 +230,7 @@ func (s *AddressBookService) insertAddressBook(tx *gorm.DB, ab *model.AddressBoo
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
-	if err := validateAddressBookTags(tx, ab.UserId, ab.CollectionId, ab.Tags); err != nil {
+	if err := validateAccountTags(tx, ab.UserId, ab.Tags); err != nil {
 		return false, err
 	}
 	if fillMetadata {
@@ -433,7 +430,7 @@ func (s *AddressBookService) BatchCreateFromPeers(peers []*model.Peer, userID, c
 		if err := lockAddressBookOwners(tx, userID); err != nil {
 			return err
 		}
-		if err := validateAddressBookTags(tx, userID, collectionID, encodedTags); err != nil {
+		if err := validateAccountTags(tx, userID, encodedTags); err != nil {
 			return err
 		}
 		for batch := range slices.Chunk(rowIDs, 500) {
@@ -552,7 +549,7 @@ func (s *AddressBookService) UpdateByMap(u *model.AddressBook, data map[string]i
 		if err := lockAddressBookOwners(tx, u.UserId); err != nil {
 			return err
 		}
-		if err := validateAddressBookTags(tx, u.UserId, u.CollectionId, encoded); err != nil {
+		if err := validateAccountTags(tx, u.UserId, encoded); err != nil {
 			return err
 		}
 		return updateAddressBookEntry(tx, u, data, nil)
@@ -596,7 +593,7 @@ func (s *AddressBookService) UpdateFields(current, patch *model.AddressBook, fie
 				}
 				tags = stored.Tags
 			}
-			if err := validateAddressBookTags(tx, patch.UserId, patch.CollectionId, tags); err != nil {
+			if err := validateAccountTags(tx, patch.UserId, tags); err != nil {
 				return err
 			}
 		}
@@ -614,22 +611,30 @@ func (s *AddressBookService) UpdateFields(current, patch *model.AddressBook, fie
 	})
 }
 
-// ShareableEntry returns the matching address book row when its ID can be shared.
-func (s *AddressBookService) ShareableEntry(rowID, userID uint, target model.AddressBookTarget) (*model.AddressBook, error) {
+func shareableWebClientDeviceID(target model.AddressBookTarget) (model.DeviceIdentity, error) {
 	id := string(target)
 	if strings.Contains(id, "@") {
-		return nil, ErrWebClientExplicitServerTarget
+		return "", ErrWebClientExplicitServerTarget
 	}
 	// The bundled Web Client trims the input and removes ASCII spaces before connecting.
 	if strings.ContainsRune(id, ' ') || strings.TrimFunc(id, func(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' }) != id {
-		return nil, ErrWebClientTargetWhitespace
+		return "", ErrWebClientTargetWhitespace
 	}
 	deviceID, direct := localAddressBookDeviceID(target)
 	if direct {
-		return nil, ErrWebClientDirectTarget
+		return "", ErrWebClientDirectTarget
 	}
 	if deviceID == "" {
-		return nil, ErrWebClientEmptyTarget
+		return "", ErrWebClientEmptyTarget
+	}
+	return deviceID, nil
+}
+
+// ShareableEntry returns the matching address book row when its ID can be shared.
+func (s *AddressBookService) ShareableEntry(rowID, userID uint, target model.AddressBookTarget) (*model.AddressBook, error) {
+	deviceID, err := shareableWebClientDeviceID(target)
+	if err != nil {
+		return nil, err
 	}
 	entry := &model.AddressBook{}
 	query := DB.Where("row_id = ? AND user_id = ? AND id = ?", rowID, userID, target).
@@ -640,11 +645,23 @@ func (s *AddressBookService) ShareableEntry(rowID, userID uint, target model.Add
 	return entry, nil
 }
 
+// ShareablePeer returns a current-account device row when it can be shared directly.
+func (s *AddressBookService) ShareablePeer(rowID, userID uint, target model.AddressBookTarget) (*model.Peer, error) {
+	deviceID, err := shareableWebClientDeviceID(target)
+	if err != nil {
+		return nil, err
+	}
+	peer := &model.Peer{}
+	query := DB.Where("row_id = ? AND user_id = ? AND id = ?", rowID, userID, target).
+		Where("NOT "+peerIDAmbiguous, deviceID)
+	if err := query.First(peer).Error; err != nil {
+		return nil, err
+	}
+	return peer, nil
+}
+
 // ShareByWebClient 分享
 func (s *AddressBookService) ShareByWebClient(m *model.ShareRecord) error {
-	if err := AllService.ServerCmdService.CheckAnonymousWebClientShare(); err != nil {
-		return err
-	}
 	m.ShareToken = uuid.New().String()
 	return DB.Create(m).Error
 }
@@ -691,76 +708,10 @@ func (s *AddressBookService) ListCollection(page, pageSize uint, where func(tx *
 	tx.Find(&res.AddressBookCollection)
 	return
 }
-func (s *AddressBookService) ListCollectionByIds(ids []uint) (res []*model.AddressBookCollection) {
-	DB.Where("id in ?", ids).Find(&res)
-	return res
-}
-
-func (s *AddressBookService) ListCollectionByUserId(userId uint) (res *model.AddressBookCollectionList) {
-	res = s.ListCollection(1, 100, func(tx *gorm.DB) {
-		tx.Where("user_id = ?", userId)
-	})
-	return
-}
 func (s *AddressBookService) CollectionInfoById(id uint) *model.AddressBookCollection {
 	p := &model.AddressBookCollection{}
 	DB.Where("id = ?", id).First(p)
 	return p
-}
-
-func (s *AddressBookService) CollectionReadRules(user *model.User) (res []*model.AddressBookCollectionRule) {
-	// personalRules
-	var personalRules []*model.AddressBookCollectionRule
-	tx2 := DB.Model(&model.AddressBookCollectionRule{})
-	tx2.Where("type = ? and to_id = ? and rule > 0", model.ShareAddressBookRuleTypePersonal, user.Id).Find(&personalRules)
-	res = append(res, personalRules...)
-
-	//group
-	var groupRules []*model.AddressBookCollectionRule
-	tx3 := DB.Model(&model.AddressBookCollectionRule{})
-	tx3.Where("type = ? and to_id = ? and rule > 0", model.ShareAddressBookRuleTypeGroup, user.GroupId).Find(&groupRules)
-	res = append(res, groupRules...)
-	return
-}
-
-func (s *AddressBookService) UserMaxRule(user *model.User, uid, cid uint) int {
-	// ismy?
-	if user.Id == uid {
-		return model.ShareAddressBookRuleRuleFullControl
-	}
-	max := 0
-	personalRules := &model.AddressBookCollectionRule{}
-	tx := DB.Model(personalRules)
-	tx.Where("type = ? and collection_id = ? and to_id = ?", model.ShareAddressBookRuleTypePersonal, cid, user.Id).First(&personalRules)
-	if personalRules.Id != 0 {
-		max = personalRules.Rule
-		if max == model.ShareAddressBookRuleRuleFullControl {
-			return max
-		}
-	}
-
-	groupRules := &model.AddressBookCollectionRule{}
-	tx2 := DB.Model(groupRules)
-	tx2.Where("type = ? and collection_id = ? and to_id = ?", model.ShareAddressBookRuleTypeGroup, cid, user.GroupId).First(&groupRules)
-	if groupRules.Id != 0 {
-		if groupRules.Rule > max {
-			max = groupRules.Rule
-		}
-		if max == model.ShareAddressBookRuleRuleFullControl {
-			return max
-		}
-	}
-	return max
-}
-
-func (s *AddressBookService) CheckUserReadPrivilege(user *model.User, uid, cid uint) bool {
-	return s.UserMaxRule(user, uid, cid) >= model.ShareAddressBookRuleRuleRead
-}
-func (s *AddressBookService) CheckUserWritePrivilege(user *model.User, uid, cid uint) bool {
-	return s.UserMaxRule(user, uid, cid) >= model.ShareAddressBookRuleRuleReadWrite
-}
-func (s *AddressBookService) CheckUserFullControlPrivilege(user *model.User, uid, cid uint) bool {
-	return s.UserMaxRule(user, uid, cid) >= model.ShareAddressBookRuleRuleFullControl
 }
 
 func (s *AddressBookService) CreateCollection(t *model.AddressBookCollection) error {
@@ -772,51 +723,11 @@ func (s *AddressBookService) UpdateCollection(t *model.AddressBookCollection) er
 }
 
 func (s *AddressBookService) DeleteCollection(t *model.AddressBookCollection) error {
-	//删除集合下的所有规则、地址簿，再删除集合
+	//删除集合下的地址簿，再删除集合
 	tx := DB.Begin()
-	tx.Where("collection_id = ?", t.Id).Delete(&model.AddressBookCollectionRule{})
 	tx.Where("collection_id = ?", t.Id).Delete(&model.AddressBook{})
 	tx.Delete(t)
 	return tx.Commit().Error
-}
-
-func (s *AddressBookService) RuleInfoById(u uint) *model.AddressBookCollectionRule {
-	p := &model.AddressBookCollectionRule{}
-	DB.Where("id = ?", u).First(p)
-	return p
-}
-func (s *AddressBookService) RulePersonalInfoByToIdAndCid(toid, cid uint) *model.AddressBookCollectionRule {
-	return s.RuleInfoByToIdAndCid(model.ShareAddressBookRuleTypePersonal, toid, cid)
-}
-func (s *AddressBookService) RuleInfoByToIdAndCid(t int, toid, cid uint) *model.AddressBookCollectionRule {
-	p := &model.AddressBookCollectionRule{}
-	DB.Where("type = ? and to_id = ? and collection_id = ?", t, toid, cid).First(p)
-	return p
-}
-func (s *AddressBookService) CreateRule(t *model.AddressBookCollectionRule) error {
-	return DB.Create(t).Error
-}
-
-func (s *AddressBookService) ListRules(page uint, size uint, f func(tx *gorm.DB)) *model.AddressBookCollectionRuleList {
-	res := &model.AddressBookCollectionRuleList{}
-	res.Page = int64(page)
-	res.PageSize = int64(size)
-	tx := DB.Model(&model.AddressBookCollectionRule{})
-	if f != nil {
-		f(tx)
-	}
-	tx.Count(&res.Total)
-	tx.Scopes(Paginate(page, size))
-	tx.Find(&res.AddressBookCollectionRule)
-	return res
-}
-
-func (s *AddressBookService) UpdateRule(t *model.AddressBookCollectionRule) error {
-	return DB.Model(t).Updates(t).Error
-}
-
-func (s *AddressBookService) DeleteRule(t *model.AddressBookCollectionRule) error {
-	return DB.Delete(t).Error
 }
 
 // CheckCollectionOwner 检查Collection的所有者
@@ -854,7 +765,7 @@ func (s *AddressBookService) BatchUpdateTags(abs []*model.AddressBook, tags []st
 			}
 			scope := [2]uint{entry.UserId, entry.CollectionId}
 			if !checked[scope] {
-				if err := validateAddressBookTags(tx, entry.UserId, entry.CollectionId, tagsv); err != nil {
+				if err := validateAccountTags(tx, entry.UserId, tagsv); err != nil {
 					return err
 				}
 				checked[scope] = true

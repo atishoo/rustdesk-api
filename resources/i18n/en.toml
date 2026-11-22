@@ -63,21 +63,6 @@ description = "A Web Client device ID is required"
 one = "Enter a device ID before using Web Client sharing."
 other = "Enter a device ID before using Web Client sharing."
 
-[WebClientShareRequiresLogin]
-description = "ID Server requires login"
-one = "The ID Server requires login, so anonymous Web Client sharing is unavailable."
-other = "The ID Server requires login, so anonymous Web Client sharing is unavailable."
-
-[WebClientLoginPolicyUnknown]
-description = "ID Server login requirement could not be confirmed"
-one = "The ID Server's login requirement could not be confirmed. Configure the policy for an external ID Server or try again later."
-other = "The ID Server's login requirement could not be confirmed. Configure the policy for an external ID Server or try again later."
-
-[WebClientMissingIDServer]
-description = "Web Client sharing requires an ID Server"
-one = "Configure an ID Server before using Web Client sharing."
-other = "Configure an ID Server before using Web Client sharing."
-
 [ItemNotFound]
 description = "Item not found."
 one = "Item not found."

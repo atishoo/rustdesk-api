@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/lejianwen/rustdesk-api/v2/model"
@@ -83,56 +81,6 @@ func (is *ServerCmdService) sendCmdToLoopback(port int, cmd, arg, host string, f
 		return "", fmt.Errorf("server command response exceeds %d bytes", maxResponseBytes)
 	}
 	return string(result), nil
-}
-
-// CheckAnonymousWebClientShare checks the configured ID Server's login policy.
-func (is *ServerCmdService) CheckAnonymousWebClientShare() error {
-	if strings.TrimSpace(Config.Capylink.IdServer) == "" {
-		return ErrWebClientMissingIDServer
-	}
-	if mustLogin := Config.Capylink.MustLogin; mustLogin != nil {
-		if *mustLogin {
-			return ErrWebClientShareRequiresLogin
-		}
-		return nil
-	}
-	port := Config.Admin.IdServerPort
-	host, rawPort, err := net.SplitHostPort(addressBookServerKey(Config.Capylink.IdServer))
-	if err != nil || (host != "127.0.0.1" && host != "::1") {
-		return ErrWebClientLoginPolicyUnknown
-	}
-	configuredPort, err := strconv.Atoi(rawPort)
-	if err != nil || port < 2 || configuredPort != port {
-		return ErrWebClientLoginPolicyUnknown
-	}
-	status, err := is.sendCmdToLoopback(port-1, "ml", "", host)
-	if err != nil {
-		return ErrWebClientLoginPolicyUnknown
-	}
-	switch strings.TrimSpace(status) {
-	case "MUST_LOGIN: false":
-		return nil
-	case "MUST_LOGIN: true":
-		return ErrWebClientShareRequiresLogin
-	}
-	if os.Getenv("CAPYLINK_API_S6_LOCAL_CONTROL") != "1" {
-		return ErrWebClientLoginPolicyUnknown
-	}
-	// Older bundled ID Servers do not implement ml. Only use the startup
-	// policy when the same control endpoint identifies itself and omits ml.
-	help, err := is.sendCmdToLoopback(port-1, "h", "", host)
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(help), "relay-servers(rs) ") {
-		return ErrWebClientLoginPolicyUnknown
-	}
-	for _, entry := range strings.Fields(help) {
-		if entry == "ml" || strings.HasPrefix(entry, "must-login") || strings.Contains(entry, "(ml)") {
-			return ErrWebClientLoginPolicyUnknown
-		}
-	}
-	if strings.EqualFold(os.Getenv("MUST_LOGIN"), "Y") {
-		return ErrWebClientShareRequiresLogin
-	}
-	return nil
 }
 
 func (is *ServerCmdService) Update(f *model.ServerCmd) error {

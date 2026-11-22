@@ -63,21 +63,6 @@ description = "Web Client 分享需要设备 ID"
 one = "请先填写设备 ID，再使用 Web Client 分享。"
 other = "请先填写设备 ID，再使用 Web Client 分享。"
 
-[WebClientShareRequiresLogin]
-description = "ID Server 要求登录"
-one = "ID Server 要求登录，匿名 Web Client 分享不可用。"
-other = "ID Server 要求登录，匿名 Web Client 分享不可用。"
-
-[WebClientLoginPolicyUnknown]
-description = "无法确认 ID Server 的登录设置"
-one = "无法确认 ID Server 是否要求登录。请为外部 ID Server 设置登录策略，或稍后重试。"
-other = "无法确认 ID Server 是否要求登录。请为外部 ID Server 设置登录策略，或稍后重试。"
-
-[WebClientMissingIDServer]
-description = "Web Client 分享需要 ID Server"
-one = "请先配置 ID Server，再使用 Web Client 分享。"
-other = "请先配置 ID Server，再使用 Web Client 分享。"
-
 [ItemNotFound]
 description = "Item not found."
 one = "数据不存在。"

@@ -18,7 +18,6 @@ const (
 
 type Capylink struct {
 	IdServer        string `mapstructure:"id-server"`
-	MustLogin       *bool  `mapstructure:"must-login"`
 	IdServerPort    int    `mapstructure:"-"`
 	RelayServer     string `mapstructure:"relay-server"`
 	RelayServerPort int    `mapstructure:"-"`

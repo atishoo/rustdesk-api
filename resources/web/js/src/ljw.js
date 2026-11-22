@@ -28,10 +28,11 @@ const launchParams = () => new URLSearchParams(window.location.hash.startsWith('
 const launch = launchParams()
 export const sharedLaunch = launch.has('share_token')
 export const managedLaunch = launch.get('managed') === '1' && !sharedLaunch
-const shareToken = launch.get('share_token')
+export const shareToken = launch.get('share_token')
 const launchSession = launch.get('launch_session') || ''
 
 export const ordinaryNetworkOptions = new Set(['custom-rendezvous-server', 'relay-server', 'key'])
+const sharedAccountOptions = new Set(['access_token', 'access_token_deployment', 'user_info'])
 
 export function clearWebClientAccount() {
     for (const key of ['access_token', 'access_token_deployment', 'user_info', 'account-id-server', 'account-key', 'peers']) {
@@ -53,6 +54,10 @@ export function getWebClientNetworkOption(name) {
         return null
     }
     return value ?? (name === 'custom-rendezvous-server' ? sessionStorage.getItem('account-id-server') : null)
+}
+
+export function isSharedAccountOption(name) {
+    return sharedLaunch && sharedAccountOptions.has(name)
 }
 
 if (!managedLaunch && !sharedLaunch) {
@@ -165,8 +170,8 @@ export function saveManagedPassword(target, password, expectedPassword) {
 
 let serverConfigRequest
 export function getServerConf(token) {
-    const apiServer = sessionStorage.getItem('api-server') || location.origin
-    if (!token || !apiServer || managedLaunch || sharedLaunch) {
+    const apiServer = window.capylinkWebClientApiServer || sessionStorage.getItem('api-server') || location.origin
+    if (!token || !apiServer || managedLaunch) {
         return
     }
     if (serverConfigRequest?.token === token && serverConfigRequest.apiServer === apiServer) {
@@ -183,7 +188,7 @@ export function getServerConf(token) {
         }
     ).then(res => res.ok ? res.json() : undefined).then(res => {
         if (res?.code === 0 && sessionStorage.getItem('access_token') === token &&
-            (sessionStorage.getItem('api-server') || location.origin) === apiServer) {
+            (window.capylinkWebClientApiServer || sessionStorage.getItem('api-server') || location.origin) === apiServer) {
             if (typeof res.data.id_server === 'string' && typeof res.data.key === 'string') {
                 const previousServer = getWebClientNetworkOption('custom-rendezvous-server')
                 const previousKey = getWebClientNetworkOption('key')

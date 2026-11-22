@@ -302,7 +302,7 @@ func (us *UserService) Delete(u *model.User) error {
 		if err := tx.Delete(u).Error; err != nil {
 			return err
 		}
-		for _, related := range []any{&model.UserThird{}, &model.AddressBook{}, &model.AddressBookCollection{}, &model.AddressBookCollectionRule{}} {
+		for _, related := range []any{&model.UserThird{}, &model.AddressBook{}, &model.AddressBookCollection{}} {
 			if err := tx.Where("user_id = ?", u.Id).Delete(related).Error; err != nil {
 				return err
 			}

@@ -24,12 +24,13 @@ type Config struct {
 // @Router /admin/config/server [get]
 // @Security token
 func (co *Config) ServerConfig(c *gin.Context) {
+	mustLogin := true
 	cf := &response.ServerConfigResponse{
 		IdServer:    global.Config.Capylink.IdServer,
 		Key:         global.Config.Capylink.Key,
 		RelayServer: global.Config.Capylink.RelayServer,
 		ApiServer:   global.Config.Capylink.ApiServer,
-		MustLogin:   global.Config.Capylink.MustLogin,
+		MustLogin:   &mustLogin,
 	}
 	response.Success(c, cf)
 }

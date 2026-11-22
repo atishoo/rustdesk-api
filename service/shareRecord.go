@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"gorm.io/gorm"
 )
@@ -32,6 +34,19 @@ func (srs *ShareRecordService) List(page, pageSize uint, where func(tx *gorm.DB)
 		}
 	}
 	return
+}
+
+// StartShare begins the validity window on the first successful share redemption.
+func (srs *ShareRecordService) StartShare(record *model.ShareRecord) error {
+	if record.StartedAt == 0 {
+		startedAt := time.Now().Unix()
+		if err := DB.Model(&model.ShareRecord{}).
+			Where("id = ? AND started_at = 0", record.Id).
+			Update("started_at", startedAt).Error; err != nil {
+			return err
+		}
+	}
+	return DB.Where("id = ?", record.Id).First(record).Error
 }
 
 // Create 创建

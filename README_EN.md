@@ -25,7 +25,6 @@ desktop software that provides self-hosted solutions.
     - Personal API
     - Login
     - Address Book
-    - Groups
     - Authorized login, 
       - supports `GitHub`, `Google` and `OIDC` login, 
       - supports `web admin` authorized login, 
@@ -36,7 +35,6 @@ desktop software that provides self-hosted solutions.
     - Device Management
     - Address Book Management
     - Tag Management
-    - Group Management
     - OAuth Management
     - LDAP Config by config file or ENV
     - Login Logs
@@ -73,10 +71,8 @@ displaying data. Build the console from the companion Web repository. [capylink-
 1. Administrators can use the sidebar to manage users, devices, address books, and service configuration.
 2. Regular users can view their devices, address books, shares, and login logs.
 
-3. Each user can have multiple address books, which can also be shared with other users.
-4. Groups can be customized for easy management. Currently, two types are supported: `shared group` and `regular group`.
-5. You can directly launch the client or open the web client for convenience; you can also share it with guests, who can remotely access the device via the web client.
-6. OAuth support: Currently, `GitHub`, `Google` and `OIDC`  are supported. You need to create an `OAuth App` and configure it in
+3. You can directly launch the client or open the Web Client for convenience; you can also create share links, which require the recipient to sign in before using Web Client remote access.
+4. OAuth support: Currently, `GitHub`, `Google` and `OIDC`  are supported. You need to create an `OAuth App` and configure it in
    the admin panel.
     - For `Google` and `Github`, you don't need to fill the `Issuer` and `Scpoes`
     - For `OIDC`, you must set the `Issuer`. And `Scopes` is optional which default is `openid,email,profile`, please make sure this `Oauth App` can access `sub`, `email` and `preferred_username`
@@ -85,9 +81,9 @@ displaying data. Build the console from the companion Web repository. [capylink-
     - Set the `Authorization callback URL` to `http://<your server[:port]>/api/oidc/callback`,
       e.g., `http://127.0.0.1:21114/api/oidc/callback`.
    
-7. Login logs
-8. Connection logs
-9. File transfer logs
+5. Login logs
+6. Connection logs
+7. File transfer logs
 10. Service configuration and commands
 
     - **Service configuration**: Open **服务配置** in the sidebar to inspect the API, ID Server, Relay Server, and console settings.
@@ -138,7 +134,7 @@ Password login through Vite's default same-origin proxy works with an empty orig
 
 Admin OAuth requests require an absolute `redirect_url`. Its origin must match the request origin and appear in `app.admin-origins` or match `capylink.api-server`. For same-origin reverse proxy deployments, preserve the original `Host`, set `X-Forwarded-Proto` to the public scheme, and list the immediate proxy address in `gin.trust-proxy` or `CAPYLINK_API_GIN_TRUST_PROXY`.
 
-Anonymous Web Client sharing requires `capylink.id-server`. For a public hostname, a proxy, or an external ID Server, set `capylink.must-login` or `CAPYLINK_API_CAPYLINK_MUST_LOGIN` to `true` or `false` to match the target's policy. A policy that requires login or cannot be confirmed blocks creating and redeeming anonymous shares. You can omit this setting to query the local ID Server when `capylink.id-server` uses `127.0.0.1` or `::1` and its port matches `admin.id-server-port`.
+Web Client connections always require login. Share links can still be created, but anyone opening one must sign in. The ID Server receives the login token and can validate its account identity when the shared JWT key is configured.
 
 
 ### Environment Variables
@@ -191,7 +187,7 @@ Upgrade existing configuration from the `rustdesk` root to `capylink`, and renam
 | CAPYLINK_API_PROXY_ENABLE                              | proxy_enable :`false`, `true`                                                                                                                       | `false`                       |
 | CAPYLINK_API_PROXY_HOST                                | proxy_host                                                                                                                                          | `http://127.0.0.1:1080`       |
 | ----JWT----                                            | --------                                                                                                                                            | --------                      |
-| CAPYLINK_API_JWT_KEY                                   | Custom JWT KEY, if empty JWT is not enabled.<br/>If `MUST_LOGIN` from `lejianwen/rustdesk-server` is not used, it is recommended to leave it empty. |                               |
+| CAPYLINK_API_JWT_KEY                                   | Custom JWT key used to validate ID Server login tokens; an empty value disables JWT validation. |                               |
 | CAPYLINK_API_JWT_EXPIRE_DURATION                       | JWT expire duration                                                                                                                                 | `168h`                        |
 
 ### Installation Steps

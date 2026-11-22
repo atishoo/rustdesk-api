@@ -4,7 +4,7 @@ import {loadVp9} from "./codec";
 import {checkIfRetry, version} from "./gen_js_from_hbb";
 import {initZstd, translate} from "./common";
 import PCMPlayer from "pcm-player";
-import {clearWebClientAccount, getServerConf, getWebClientNetworkOption, managedLaunch, ordinaryNetworkOptions, setWebClientAccountApi, sharedLaunch, sharedTarget} from "./ljw";
+import {clearWebClientAccount, getServerConf, getWebClientNetworkOption, isSharedAccountOption, managedLaunch, ordinaryNetworkOptions, setWebClientAccountApi, shareToken, sharedLaunch, sharedTarget} from "./ljw";
 
 const scopedOptionFields = {
     access_token: null,
@@ -201,7 +201,7 @@ window.setByName = (name, value) => {
     if (name === 'login' && sharedLaunch) return;
     if (name === 'remove' && scopedLaunch) return;
     const option = name === 'option' || name === 'option:local' ? JSON.parse(value) : null;
-    if (option && scopedLaunch && Object.hasOwn(scopedOptionFields, option.name)) return;
+    if (option && scopedLaunch && Object.hasOwn(scopedOptionFields, option.name) && !isSharedAccountOption(option.name)) return;
     switch (name) {
         case 'remote_id':
             if (!scopedLaunch) localStorage.setItem('remote-id', value);
@@ -298,6 +298,9 @@ window.setByName = (name, value) => {
                         if (option.value) {
                             sessionStorage.setItem(option.name, option.value);
                             getServerConf(option.value);
+                            if (sharedLaunch) setTimeout(() => {
+                                window.location.href = `${window.location.pathname}#/?share_token=${encodeURIComponent(shareToken || '')}`;
+                            }, 0);
                         }
                     } else {
                         sessionStorage.setItem(option.name, option.value);
@@ -367,7 +370,7 @@ function _getByName(name, arg) {
             return { error: 'Invalid API server settings' };
         case 'option:local':
         case 'option':
-            if (scopedLaunch && Object.hasOwn(scopedOptionFields, arg)) {
+            if (scopedLaunch && Object.hasOwn(scopedOptionFields, arg) && !isSharedAccountOption(arg)) {
                 const field = scopedOptionFields[arg];
                 const target = sharedLaunch ? sharedTarget : window.capylinkManagedTarget;
                 if (!field || !target) return '';

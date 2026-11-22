@@ -28,7 +28,6 @@
     - 个人版API
     - 登录
     - 地址簿
-    - 群组
     - 授权登录
       - 支持`github`, `google` 和 `OIDC` 登录，
       - 支持`web后台`授权登录
@@ -39,7 +38,6 @@
     - 设备管理
     - 地址簿管理
     - 标签管理
-    - 群组管理
     - Oauth 管理
     - 配置LDAP, 配置文件或者环境变量
     - 登录日志
@@ -96,7 +94,7 @@ App 每 30 秒刷新凭据；API 与被控端的授权租约均为 90 秒。退�
 
 3. 每个用户可以多个地址簿，也可以将地址簿共享给其他用户
 4. 分组可以自定义，方便管理，暂时支持两种类型: `共享组` 和 `普通组`
-5. 可以直接打开webclient，方便使用；也可以分享给游客，游客可以直接通过webclient远程到设备
+5. 可以直接打开 Web Client，方便使用；也可以创建分享链接，链接使用者登录账号后通过 Web Client 远程到设备。
 6. Oauth,支持了`Github`, `Google` 以及 `OIDC`, 需要创建一个`OAuth App`，然后配置到后台
     - 对于`Google` 和 `Github`, `Issuer` 和 `Scopes`不需要填写.
     - 对于`OIDC`, `Issuer`是必须的。`Scopes`是可选的，默认为 `openid,profile,email`. 确保可以获取 `sub`,`email` 和`preferred_username`
@@ -157,7 +155,7 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 
 管理端 OAuth 请求须携带绝对 `redirect_url`，其来源须与请求来源一致，并已在 `app.admin-origins` 或 `capylink.api-server` 中配置。同源反向代理需保留原始 `Host`，将 `X-Forwarded-Proto` 设为公网协议，并在 `gin.trust-proxy` 或 `CAPYLINK_API_GIN_TRUST_PROXY` 中登记 API 的直接代理地址。
 
-匿名 Web Client 分享需要配置 `capylink.id-server`。使用公网域名、代理或外部 ID Server 时，请按实际目标的策略将 `capylink.must-login` 或 `CAPYLINK_API_CAPYLINK_MUST_LOGIN` 设为 `true` 或 `false`。`true` 或无法确认的策略均会阻止创建和兑换匿名分享。只有 `capylink.id-server` 为 `127.0.0.1` 或 `::1` 且端口与 `admin.id-server-port` 一致时，才能省略策略并查询本机实例。
+Web Client 连接统一要求登录。分享链接仍可创建，但打开链接的用户必须登录；ID Server 会收到登录令牌，配置共享 JWT 密钥后可校验令牌中的账号身份。
 
 ### 环境变量
 环境变量和配置文件`conf/config.yaml`中的配置一一对应，变量名前缀是`CAPYLINK_API`，服务配置段使用 `CAPYLINK_API_CAPYLINK_*`。SQLite 数据库统一使用 `data/capylinkapi.db`。
@@ -207,7 +205,7 @@ Vite 默认通过同源代理访问 API，使用密码登录无需配置来源�
 | CAPYLINK_API_PROXY_ENABLE                              | 是否启用代理:`false`, `true`                                                         | `false`                      |
 | CAPYLINK_API_PROXY_HOST                                | 代理地址                                                                           | `http://127.0.0.1:1080`      |
 | ----JWT配置----                                          | --------                                                                       | --------                     |
-| CAPYLINK_API_JWT_KEY                                   | 自定义JWT KEY,为空则不启用JWT<br/>如果没使用`lejianwen/rustdesk-server`中的`MUST_LOGIN`，建议设置为空 |                              |
+| CAPYLINK_API_JWT_KEY                                   | 用于校验 ID Server 登录令牌的自定义 JWT KEY；为空则不启用 JWT 校验 |                              |
 | CAPYLINK_API_JWT_EXPIRE_DURATION                       | JWT有效时间                                                                        | `168h`                       |
 
 

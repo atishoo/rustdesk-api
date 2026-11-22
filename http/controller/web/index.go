@@ -24,12 +24,15 @@ func (i *Index) ConfigJs(c *gin.Context) {
 	key, _ := json.Marshal(config.Key)
 	wsHost, _ := json.Marshal(config.WsHost)
 	script := fmt.Sprintf(`const webClientApiServer = %s;
-window.capylinkWebClientApiServer = %s;
 const webClientServer = { server: %s, relay: %s };
 const webClientBuiltIn = window.location.pathname === '/webclient/';
 const webClientLaunch = new URLSearchParams(window.location.hash.startsWith('#/?') ? window.location.hash.slice(3) : '');
 const webClientGuest = webClientLaunch.has('share_token');
 const webClientManaged = !webClientGuest && webClientLaunch.get('managed') === '1';
+const webClientShareApiServer = %s;
+window.capylinkWebClientApiServer = webClientGuest && webClientShareApiServer
+    ? webClientShareApiServer
+    : (webClientBuiltIn ? window.location.origin : webClientApiServer);
 if (!webClientGuest && !webClientManaged) {
     window.capylinkWebClientAccountApiServer = webClientBuiltIn ? window.location.origin : webClientApiServer;
     window.capylinkWebClientRelayTarget = webClientServer;
@@ -44,7 +47,7 @@ if (webClientBuiltIn && webClientManaged) {
         window.capylinkManagedTarget = { id, ...webClientServer, key: %s };
     }
 }
-`, apiServer, shareApiServer, idServer, relayServer, config.WebclientMagicQueryonline, wsHost, key)
+`, apiServer, idServer, relayServer, shareApiServer, config.WebclientMagicQueryonline, wsHost, key)
 
 	c.Header("Content-Type", "application/javascript")
 	c.Header("Cache-Control", "no-store")

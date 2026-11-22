@@ -27,6 +27,7 @@ type SharedTarget = ConnectionTarget & { passwordBase64: string | undefined; opt
 declare global {
   interface Window {
     capylinkManagedTarget?: ConnectionTarget;
+    capylinkWebClientApiServer?: string;
     capylinkWebClientRelayTarget?: RelayTarget;
   }
 }
@@ -143,8 +144,12 @@ export default class Connection {
       this._hash = undefined;
       this._managedPasswordAttempt = undefined;
     }
-    if (!target) this._ordinaryAccountToken = sessionStorage.getItem("access_token");
-    const accountToken = this._ordinaryAccountToken;
+    const accountToken = sessionStorage.getItem("access_token");
+    if (sharedLaunch && !accountToken) {
+      this.msgbox("error", "Login Required", "请先登录账号后再连接分享设备。");
+      return;
+    }
+    if (!target) this._ordinaryAccountToken = accountToken;
     const deployment = accountToken ? await getServerConf(accountToken) : undefined;
     if (accountToken && (generation !== this._startGeneration || globals.getConn() !== this ||
         sessionStorage.getItem("access_token") !== accountToken)) return;
@@ -205,7 +210,7 @@ export default class Connection {
     if (this._managedTarget && signalUri.protocol === "wss:") {
       token = requestToken;
     } else if (accountToken && sessionStorage.getItem("access_token") === accountToken &&
-               deployment?.apiServer === (sessionStorage.getItem("api-server") || location.origin) &&
+               deployment?.apiServer === (window.capylinkWebClientApiServer || sessionStorage.getItem("api-server") || location.origin) &&
                deployment?.key === key && matchesRendezvous(signalUri, deployment.id_server)) {
       if (signalUri.protocol === "wss:") token = accountToken;
       relayTarget = getPublishedRelayTarget(signalUri, {
