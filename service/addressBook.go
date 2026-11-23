@@ -408,6 +408,9 @@ func (s *AddressBookService) BatchCreateFromPeers(peers []*model.Peer, userID, c
 	selected := make(map[uint]*model.Peer, len(peers))
 	pending := make(map[model.AddressBookTarget]struct{}, len(peers))
 	for _, peer := range peers {
+		if peer == nil || peer.UserId == 0 || peer.UserId != userID {
+			return gorm.ErrRecordNotFound
+		}
 		rawID := string(peer.Id)
 		if strings.Contains(rawID, "@") || hasAddressBookRelaySuffix(rawID) || isDirectAddressBookTarget(rawID) {
 			return ErrUnsupportedAddressBookPeerID
@@ -430,6 +433,13 @@ func (s *AddressBookService) BatchCreateFromPeers(peers []*model.Peer, userID, c
 		if err := lockAddressBookOwners(tx, userID); err != nil {
 			return err
 		}
+		if collectionID != 0 {
+			var collection model.AddressBookCollection
+			if err := tx.Select("id").Where("id = ? AND user_id = ?", collectionID, userID).
+				Clauses(clause.Locking{Strength: clause.LockingStrengthShare}).Take(&collection).Error; err != nil {
+				return err
+			}
+		}
 		if err := validateAccountTags(tx, userID, encodedTags); err != nil {
 			return err
 		}
@@ -445,7 +455,7 @@ func (s *AddressBookService) BatchCreateFromPeers(peers []*model.Peer, userID, c
 			}
 			for _, peer := range current {
 				original := selected[peer.RowId]
-				if peer.Id != original.Id || peer.Uuid != original.Uuid || peer.UserId != original.UserId {
+				if peer.Id != original.Id || peer.Uuid != original.Uuid || peer.UserId != userID {
 					return gorm.ErrRecordNotFound
 				}
 				if peer.AmbiguousID != nil && *peer.AmbiguousID {
@@ -484,34 +494,15 @@ func (s *AddressBookService) Create(u *model.AddressBook) error {
 	return s.createAddressBook(u, false)
 }
 
-func (s *AddressBookService) BatchCreate(entries []*model.AddressBook) error {
-	ownerIDs := make([]uint, 0, len(entries))
-	for _, entry := range entries {
-		if entry.UserId != 0 {
-			ownerIDs = append(ownerIDs, entry.UserId)
-		}
-	}
-	if len(ownerIDs) == 0 {
-		return nil
-	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockAddressBookOwners(tx, ownerIDs...); err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if entry.UserId == 0 {
-				continue
-			}
-			if _, err := s.insertAddressBook(tx, entry, false); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
 func (s *AddressBookService) Delete(u *model.AddressBook) error {
-	return DB.Delete(u).Error
+	result := addressBookEntries(DB, u.UserId, u.Id, u.CollectionId).Where("row_id = ?", u.RowId).Delete(&model.AddressBook{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // Update 更新
@@ -695,18 +686,92 @@ func (s *AddressBookService) ListByUserIdAndCollectionId(userId, cid, page, page
 	})
 	return
 }
-func (s *AddressBookService) ListCollection(page, pageSize uint, where func(tx *gorm.DB)) (res *model.AddressBookCollectionList) {
-	res = &model.AddressBookCollectionList{}
+
+// addressBookPeerRowIDs applies the same target and identity rules to counts and navigation.
+func addressBookPeerRowIDs(entries []*model.AddressBook) (map[uint][]uint, error) {
+	targets := make(map[model.DeviceIdentity][]*model.AddressBook)
+	for _, entry := range entries {
+		deviceID, direct := localAddressBookDeviceID(entry.Id)
+		if entry.UserId != 0 && deviceID != "" && !direct {
+			targets[deviceID] = append(targets[deviceID], entry)
+		}
+	}
+	members := make(map[uint][]uint)
+	for batch := range slices.Chunk(slices.Collect(maps.Keys(targets)), 500) {
+		var peers []model.Peer
+		if err := uniquePeerIDs(DB.Model(&model.Peer{}).Where("id IN ?", batch)).
+			Select("row_id", "id", "user_id").Find(&peers).Error; err != nil {
+			return nil, err
+		}
+		for _, peer := range peers {
+			for _, entry := range targets[peer.Id] {
+				if peer.UserId == entry.UserId {
+					members[entry.CollectionId] = append(members[entry.CollectionId], peer.RowId)
+				}
+			}
+		}
+	}
+	for id, rows := range members {
+		slices.Sort(rows)
+		members[id] = slices.Compact(rows)
+	}
+	return members, nil
+}
+
+func (s *AddressBookService) CollectionPeerRowIDs(collectionID uint) ([]uint, error) {
+	query := DB.Select("id", "user_id", "collection_id").Where("collection_id = ?", collectionID)
+	if collectionID != 0 {
+		var collection model.AddressBookCollection
+		if err := DB.Select("id", "user_id").First(&collection, collectionID).Error; err != nil {
+			return nil, err
+		}
+		query = query.Where("user_id = ?", collection.UserId)
+	}
+	var entries []*model.AddressBook
+	if err := query.Find(&entries).Error; err != nil {
+		return nil, err
+	}
+	members, err := addressBookPeerRowIDs(entries)
+	return members[collectionID], err
+}
+
+func (s *AddressBookService) ListCollection(page, pageSize uint, where func(tx *gorm.DB)) (*model.AddressBookCollectionList, error) {
+	res := &model.AddressBookCollectionList{}
 	res.Page = int64(page)
 	res.PageSize = int64(pageSize)
 	tx := DB.Model(&model.AddressBookCollection{})
 	if where != nil {
 		where(tx)
 	}
-	tx.Count(&res.Total)
-	tx.Scopes(Paginate(page, pageSize))
-	tx.Find(&res.AddressBookCollection)
-	return
+	if err := tx.Count(&res.Total).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.Scopes(Paginate(page, pageSize)).Find(&res.AddressBookCollection).Error; err != nil {
+		return nil, err
+	}
+	ids := make([]uint, 0, len(res.AddressBookCollection))
+	for _, collection := range res.AddressBookCollection {
+		ids = append(ids, collection.Id)
+	}
+	var entries []*model.AddressBook
+	for batch := range slices.Chunk(ids, 500) {
+		var rows []*model.AddressBook
+		if err := DB.Model(&model.AddressBook{}).
+			Joins("JOIN address_book_collections AS collections ON collections.id = address_books.collection_id AND collections.user_id = address_books.user_id").
+			Where("address_books.collection_id IN ?", batch).
+			Select("address_books.id", "address_books.user_id", "address_books.collection_id").Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		entries = append(entries, rows...)
+	}
+	members, err := addressBookPeerRowIDs(entries)
+	if err != nil {
+		return nil, err
+	}
+	for _, collection := range res.AddressBookCollection {
+		collection.DeviceCount = int64(len(members[collection.Id]))
+	}
+	return res, nil
 }
 func (s *AddressBookService) CollectionInfoById(id uint) *model.AddressBookCollection {
 	p := &model.AddressBookCollection{}

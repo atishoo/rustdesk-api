@@ -31,25 +31,25 @@ func (id *DeviceIdentity) UnmarshalText(text []byte) error {
 }
 
 type Peer struct {
-	RowId             uint                  `json:"row_id" gorm:"primaryKey;"`
-	Id                DeviceIdentity        `json:"id"  gorm:"default:'';not null;index;uniqueIndex:idx_peer_identity,priority:1;comment:设备 ID"`
-	Cpu               string                `json:"cpu"  gorm:"default:'';not null;"`
-	Hostname          string                `json:"hostname"  gorm:"default:'';not null;"`
-	Memory            string                `json:"memory"  gorm:"default:'';not null;"`
-	Os                string                `json:"os"  gorm:"default:'';not null;"`
-	Username          string                `json:"username"  gorm:"default:'';not null;"`
-	Uuid              DeviceIdentity        `json:"uuid"  gorm:"default:'';not null;index;uniqueIndex:idx_peer_identity,priority:2;comment:设备 UUID"`
-	Version           string                `json:"version"  gorm:"default:'';not null;"`
-	UserId            uint                  `json:"user_id"  gorm:"default:0;not null;index"`
-	User              *User                 `json:"user,omitempty"`
-	LastOnlineTime    int64                 `json:"last_online_time"  gorm:"default:0;not null;"`
-	LastOnlineIp      string                `json:"last_online_ip"  gorm:"default:'';not null;"`
-	GroupId           *uint                 `json:"group_id"  gorm:"default:0;not null;index"`
-	Alias             *string               `json:"alias" gorm:"default:'';not null;index"`
-	Tags              custom_types.AutoJson `json:"tags" gorm:"not null;default:'[]';comment:设备个性化标签" swaggertype:"array,string"`
-	IdentityConfirmed bool                  `json:"-" gorm:"default:false;not null;comment:设备标识曾由认证登录关联或由管理员明确登记"`
-	AmbiguousID       *bool                 `json:"ambiguous_id,omitempty" gorm:"->;-:migration"` // 仅凭 ID 无法定位到此设备，仅在设备列表返回
-	DirectTarget      bool                  `json:"direct_target,omitempty" gorm:"-"`             // 裸 IP 或域名端口直连目标，仅在控制台列表返回。
+	RowId                uint                  `json:"row_id" gorm:"primaryKey;"`
+	Id                   DeviceIdentity        `json:"id"  gorm:"default:'';not null;index;uniqueIndex:idx_peer_identity,priority:1;comment:设备 ID"`
+	Cpu                  string                `json:"cpu"  gorm:"default:'';not null;"`
+	Hostname             string                `json:"hostname"  gorm:"default:'';not null;"`
+	Memory               string                `json:"memory"  gorm:"default:'';not null;"`
+	Os                   string                `json:"os"  gorm:"default:'';not null;"`
+	Username             string                `json:"username"  gorm:"default:'';not null;"`
+	Uuid                 DeviceIdentity        `json:"uuid"  gorm:"default:'';not null;index;uniqueIndex:idx_peer_identity,priority:2;comment:设备 UUID"`
+	Version              string                `json:"version"  gorm:"default:'';not null;"`
+	UserId               uint                  `json:"user_id"  gorm:"default:0;not null;index"`
+	User                 *User                 `json:"user,omitempty"`
+	LastOnlineTime       int64                 `json:"last_online_time"  gorm:"default:0;not null;"`
+	LastOnlineIp         string                `json:"last_online_ip"  gorm:"default:'';not null;"`
+	LastOnlineIpLocation string                `json:"last_online_ip_location" gorm:"default:'';not null;comment:设备最近心跳IP写入时的归属地"` // 设备最近心跳 IP 写入时的归属地。
+	Alias                *string               `json:"alias" gorm:"default:'';not null;index"`
+	Tags                 custom_types.AutoJson `json:"tags" gorm:"not null;default:'[]';comment:设备个性化标签" swaggertype:"array,string"`
+	IdentityConfirmed    bool                  `json:"-" gorm:"default:false;not null;comment:设备标识曾由 App 认证登录关联"`
+	AmbiguousID          *bool                 `json:"ambiguous_id,omitempty" gorm:"->;-:migration"` // 仅凭 ID 无法定位到此设备，仅在设备列表返回
+	DirectTarget         bool                  `json:"direct_target,omitempty" gorm:"-"`             // 裸 IP 或域名端口直连目标，仅在控制台列表返回。
 	TimeModel
 }
 

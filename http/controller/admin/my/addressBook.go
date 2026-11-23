@@ -192,7 +192,7 @@ func (ct *AddressBook) Delete(c *gin.Context) {
 		return
 	}
 	ex := service.AllService.AddressBookService.InfoByRowId(f.RowId)
-	if ex.RowId == 0 {
+	if ex.RowId == 0 || (f.Id != "" && (ex.Id != f.Id || ex.UserId != f.UserId || ex.CollectionId != f.CollectionId)) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
 		return
 	}
@@ -202,6 +202,10 @@ func (ct *AddressBook) Delete(c *gin.Context) {
 		return
 	}
 	err := service.AllService.AddressBookService.Delete(ex)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+		return
+	}
 	if err == nil {
 		response.Success(c, nil)
 		return

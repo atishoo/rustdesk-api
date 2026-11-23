@@ -33,11 +33,12 @@
     <title>capylink</title>
     <link rel="manifest" href="manifest.json">
     <script src="/webclient-config/index.js"></script>
+    <script src="assets/packages/wakelock_web/assets/no_sleep.js"></script>
     <script src="ogvjs-1.8.6/ogv.js"></script>
-    <script type="module" crossorigin src="js/dist/index.js?v=537b1c8a"></script>
+    <script type="module" crossorigin src="js/dist/index.js?v=beba15e5"></script>
     <script>
     </script>
-    <link rel="modulepreload" href="js/dist/vendor.js?v=dfb97bdf">
+    <link rel="modulepreload" href="js/dist/vendor.js?v=be2bed08">
     <script src="yuv-canvas-1.2.6.js"></script>
 
     <style>
@@ -98,7 +99,7 @@
      application. For more information, see:
      https://developers.google.com/web/fundamentals/primers/service-workers -->
 <script>
-    var serviceWorkerVersion = 'cefdf7da5f';
+    var serviceWorkerVersion = '54e0965260';
     var scriptLoaded = false;
     var shareLaunch = window.location.hash.startsWith('#/?')
         && new URLSearchParams(window.location.hash.slice(3)).has('share_token');

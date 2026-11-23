@@ -10,6 +10,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"gorm.io/gorm"
 )
@@ -40,45 +41,6 @@ func (ct *Peer) Detail(c *gin.Context) {
 	return
 }
 
-// Create 创建设备
-// @Tags 设备
-// @Summary 创建设备
-// @Description 设备 ID 和 UUID 均必填，每项最多 256 字节。
-// @Accept  json
-// @Produce  json
-// @Param body body admin.PeerForm true "设备信息"
-// @Success 200 {object} response.Response{data=model.Peer}
-// @Failure 500 {object} response.Response
-// @Router /admin/peer/create [post]
-// @Security token
-func (ct *Peer) Create(c *gin.Context) {
-	f := &admin.PeerForm{}
-	if err := c.ShouldBindJSON(f); err != nil {
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
-		return
-	}
-	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		response.Fail(c, 101, errList[0])
-		return
-	}
-	p, fields := f.ToPeer()
-	if !p.HasIdentity() {
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
-		return
-	}
-	err := service.AllService.PeerService.Create(p, fields...)
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		response.Fail(c, 101, response.TranslateMsg(c, "ItemExists"))
-		return
-	}
-	if err != nil {
-		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
-		return
-	}
-	response.Success(c, nil)
-}
-
 // List 列表
 // @Tags 设备
 // @Summary 设备列表
@@ -91,17 +53,38 @@ func (ct *Peer) Create(c *gin.Context) {
 // @Param id query string false "ID"
 // @Param hostname query string false "主机名"
 // @Param uuids query string false "uuids 用逗号分隔"
+// @Param collection_id query int false "地址簿 ID；0 为各账号默认地址簿，仅返回同账号可唯一定位的本部署成员设备"
 // @Success 200 {object} response.Response{data=model.PeerList}
 // @Failure 500 {object} response.Response
 // @Router /admin/peer/list [get]
 // @Security token
 func (ct *Peer) List(c *gin.Context) {
 	query := &admin.PeerQuery{}
+	if values, provided := c.Request.URL.Query()["collection_id"]; provided && (len(values) != 1 || values[0] == "") {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
 	if err := c.ShouldBindQuery(query); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	res := service.AllService.PeerService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
+	var members []uint
+	if query.CollectionId != nil {
+		var err error
+		members, err = service.AllService.AddressBookService.CollectionPeerRowIDs(*query.CollectionId)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+			return
+		}
+		if err != nil {
+			response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+			return
+		}
+	}
+	res, err := service.AllService.PeerService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
+		if query.CollectionId != nil {
+			tx.Where("row_id IN ?", members)
+		}
 		if query.TimeAgo > 0 {
 			lt := time.Now().Unix() - int64(query.TimeAgo)
 			tx.Where("last_online_time < ?", lt)
@@ -129,13 +112,17 @@ func (ct *Peer) List(c *gin.Context) {
 			tx.Where("alias like ?", "%"+query.Alias+"%")
 		}
 	})
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
+	}
 	response.Success(c, res)
 }
 
 // Update 编辑
 // @Tags 设备
 // @Summary 设备编辑
-// @Description 设备 ID 和 UUID 各最多 256 字节。更新 UUID 时必须提供非空值。
+// @Description 仅更新已上报设备的别名。
 // @Accept  json
 // @Produce  json
 // @Param body body admin.PeerForm true "设备信息"
@@ -149,7 +136,7 @@ func (ct *Peer) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	if f.RowId == 0 || (f.Uuid != nil && *f.Uuid == "") {
+	if f.RowId == 0 || f.Alias == nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
@@ -158,8 +145,8 @@ func (ct *Peer) Update(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
-	u, fields := f.ToPeer()
-	err := service.AllService.PeerService.Update(u, fields...)
+	u := &model.Peer{RowId: f.RowId, Alias: f.Alias}
+	err := service.AllService.PeerService.Update(u)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
 		return

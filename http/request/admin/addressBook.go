@@ -10,10 +10,9 @@ import (
 )
 
 type AddressBookForm struct {
-	RowId   uint                    `json:"row_id"`
-	Id      model.AddressBookTarget `json:"id" validate:"required"`
-	UserId  uint                    `json:"user_id"`
-	UserIds []uint                  `json:"user_ids"`
+	RowId  uint                    `json:"row_id"`
+	Id     model.AddressBookTarget `json:"id" validate:"required"`
+	UserId uint                    `json:"user_id"`
 	AddressBookFields
 }
 
@@ -113,34 +112,6 @@ func (a AddressBookForm) ToAddressBook() *model.AddressBook {
 		CollectionId:     a.CollectionId,
 	}
 
-}
-func (a AddressBookForm) ToAddressBooks() []*model.AddressBook {
-	//tags转换
-	tags, _ := json.Marshal(a.Tags)
-
-	abs := make([]*model.AddressBook, 0, len(a.UserIds))
-	for _, userId := range a.UserIds {
-		abs = append(abs, &model.AddressBook{
-			RowId:            a.RowId,
-			Id:               a.Id,
-			Username:         a.Username,
-			Password:         a.Password,
-			Hostname:         a.Hostname,
-			Alias:            a.Alias,
-			Platform:         a.Platform,
-			Tags:             tags,
-			Hash:             a.Hash,
-			UserId:           userId,
-			ForceAlwaysRelay: a.ForceAlwaysRelay,
-			RdpPort:          a.RdpPort,
-			RdpUsername:      a.RdpUsername,
-			Online:           a.Online,
-			LoginName:        a.LoginName,
-			SameServer:       a.SameServer,
-			CollectionId:     a.CollectionId,
-		})
-	}
-	return abs
 }
 
 type AddressBookQuery struct {

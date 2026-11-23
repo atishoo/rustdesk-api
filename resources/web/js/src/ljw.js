@@ -1,8 +1,5 @@
 import {matchesRendezvous, translate} from './common'
 
-window._gwen = {}
-window._gwen.kv = {}
-
 function stringToUint8Array(str) {
     var arr = [];
     for (var i = 0, j = str.length; i < j; ++i) {
@@ -21,8 +18,6 @@ function getQueryVariable() {
         window._gwen.kv[pair[0]] = pair[1]
     }
 }
-
-getQueryVariable()
 
 const launchParams = () => new URLSearchParams(window.location.hash.startsWith('#/?') ? window.location.hash.slice(3) : '')
 const launch = launchParams()
@@ -60,19 +55,12 @@ export function isSharedAccountOption(name) {
     return sharedLaunch && sharedAccountOptions.has(name)
 }
 
-if (!managedLaunch && !sharedLaunch) {
-    const configuredApi = window.capylinkWebClientAccountApiServer || location.origin
-    if (sessionStorage.getItem('webclient-config-api-server') !== configuredApi) {
-        setWebClientAccountApi(configuredApi)
-        sessionStorage.setItem('webclient-config-api-server', configuredApi)
-    }
-}
 
-export function readManagedLaunchToken() {
-    if (!/^[a-f0-9]{32}$/.test(launchSession)) return undefined
+export function readManagedLaunchToken(expectedSession = launchSession) {
+    if (!/^[a-f0-9]{32}$/.test(expectedSession)) return undefined
     try {
         const session = JSON.parse(localStorage.getItem('capylink-web-token') || 'null')
-        if (session?.origin === location.origin && session.launchSession === launchSession && typeof session.token === 'string') {
+        if (session?.origin === location.origin && session.launchSession === expectedSession && typeof session.token === 'string') {
             return session.token || undefined
         }
     } catch {
@@ -81,31 +69,7 @@ export function readManagedLaunchToken() {
     return undefined
 }
 
-let id = window._gwen.kv.id || ''
-if (id && !managedLaunch && !sharedLaunch) {
-    try {
-        id = decodeURIComponent(id)
-    } catch {
-        // 保留无法解码的原始 ID，继续处理其他参数。
-    }
-    localStorage.setItem('remote-id', id)
-}
 export let sharedTarget
-window.capylinkSharedTargetReady = shareToken?.trim() ? redeemSharedTarget() : null
-window.addEventListener('hashchange', () => {
-    const next = launchParams()
-    const nextToken = next.get('share_token')
-    const changedShare = nextToken !== null && nextToken !== shareToken
-    const changedManaged = nextToken === null && next.get('managed') === '1' &&
-        (!managedLaunch || next.get('id') !== launch.get('id') || (next.get('launch_session') || '') !== launchSession)
-    const changedOrdinary = nextToken === null && next.get('managed') !== '1' &&
-        (sharedLaunch || managedLaunch || (next.has('id') && next.get('id') !== launch.get('id')))
-    if (changedShare || changedManaged || changedOrdinary) {
-        sharedTarget = undefined
-        window.curConn?.close()
-        window.location.reload()
-    }
-})
 
 export function decodeSharedPassword(encoded) {
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(stringToUint8Array(window.atob(encoded)))
@@ -125,7 +89,8 @@ async function redeemSharedTarget() {
         })
         if (!response.ok) return null
         const { code, data } = await response.json()
-        if (code !== 0 || typeof data?.id_server !== 'string' || !data.id_server || typeof data.key !== 'string') return null
+        const server = data?.ws_host || data?.id_server
+        if (code !== 0 || typeof server !== 'string' || !server || typeof data.key !== 'string') return null
         const peer = data.peer
         const id = peer?.info?.id
         if (typeof id !== 'string' || !id || typeof peer.tmppwd !== 'string') return null
@@ -134,7 +99,7 @@ async function redeemSharedTarget() {
         if (currentToken !== null && currentToken !== shareToken) return null
         sharedTarget = {
             id,
-            server: data.id_server,
+            server,
             key: data.key,
             relay: typeof data.relay_server === 'string' ? data.relay_server : '',
             passwordBase64: peer.tmppwd,
@@ -148,20 +113,20 @@ async function redeemSharedTarget() {
     }
 }
 
-const managedPasswordKey = (target) => 'capylink-managed-peer-password:' + JSON.stringify([launchSession, location.origin, target.server, target.key, target.id])
+const managedPasswordKey = (target, session = launchSession) => 'capylink-managed-peer-password:' + JSON.stringify([session, location.origin, target.server, target.key, target.id])
 
-export function loadManagedPassword(target) {
-    const password = localStorage.getItem(managedPasswordKey(target))
+export function loadManagedPassword(target, session = launchSession) {
+    const password = localStorage.getItem(managedPasswordKey(target, session))
     return password ? { password, remember: true } : {}
 }
 
-export function saveManagedPassword(target, password, expectedPassword) {
-    const key = managedPasswordKey(target)
+export function saveManagedPassword(target, password, expectedPassword, session = launchSession) {
+    const key = managedPasswordKey(target, session)
     const update = () => {
-        if (!readManagedLaunchToken()) return
+        if (!readManagedLaunchToken(session)) return
         if (typeof password === 'string' && password) {
             localStorage.setItem(key, password)
-            if (!readManagedLaunchToken()) localStorage.removeItem(key)
+            if (!readManagedLaunchToken(session)) localStorage.removeItem(key)
         } else if (typeof expectedPassword === 'string' && localStorage.getItem(key) === expectedPassword) localStorage.removeItem(key)
     }
     if (navigator.locks) void navigator.locks.request(key, update).catch(() => undefined)
@@ -189,15 +154,17 @@ export function getServerConf(token) {
     ).then(res => res.ok ? res.json() : undefined).then(res => {
         if (res?.code === 0 && sessionStorage.getItem('access_token') === token &&
             (window.capylinkWebClientApiServer || sessionStorage.getItem('api-server') || location.origin) === apiServer) {
-            if (typeof res.data.id_server === 'string' && typeof res.data.key === 'string') {
+            const server = res.data.ws_host || res.data.id_server
+            if (typeof server === 'string' && typeof res.data.key === 'string') {
                 const previousServer = getWebClientNetworkOption('custom-rendezvous-server')
                 const previousKey = getWebClientNetworkOption('key')
-                sessionStorage.setItem('account-id-server', res.data.id_server)
+                sessionStorage.setItem('account-id-server', server)
                 sessionStorage.setItem('account-key', res.data.key)
+                for (const name of ordinaryNetworkOptions) sessionStorage.removeItem(name)
                 if (previousServer !== getWebClientNetworkOption('custom-rendezvous-server') ||
                     previousKey !== getWebClientNetworkOption('key')) sessionStorage.removeItem('peers')
             }
-            if (res.data.peers && matchesRendezvous(getWebClientNetworkOption('custom-rendezvous-server') || '', res.data.id_server) &&
+            if (res.data.peers && matchesRendezvous(getWebClientNetworkOption('custom-rendezvous-server') || '', server) &&
                 getWebClientNetworkOption('key') === res.data.key) importServerPeers(res.data.peers)
             return { ...res.data, apiServer }
         }
@@ -236,6 +203,44 @@ function importServerPeers(peers) {
     }
 }
 
-const brandName = translate(navigator.language, "capylink");
-document.title = brandName;
-document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute("content", brandName);
+export function initializeWebClient() {
+    window._gwen = { kv: {} }
+    getQueryVariable()
+
+    if (!managedLaunch && !sharedLaunch) {
+        const configuredApi = window.capylinkWebClientAccountApiServer || location.origin
+        if (sessionStorage.getItem('webclient-config-api-server') !== configuredApi) {
+            setWebClientAccountApi(configuredApi)
+            sessionStorage.setItem('webclient-config-api-server', configuredApi)
+        }
+    }
+
+    let id = window._gwen.kv.id || ''
+    if (id && !managedLaunch && !sharedLaunch) {
+        try {
+            id = decodeURIComponent(id)
+        } catch {
+            // 保留无法解码的原始 ID，继续处理其他参数。
+        }
+        localStorage.setItem('remote-id', id)
+    }
+    window.capylinkSharedTargetReady = shareToken?.trim() ? redeemSharedTarget() : null
+    window.addEventListener('hashchange', () => {
+        const next = launchParams()
+        const nextToken = next.get('share_token')
+        const changedShare = nextToken !== null && nextToken !== shareToken
+        const changedManaged = nextToken === null && next.get('managed') === '1' &&
+            (!managedLaunch || next.get('id') !== launch.get('id') || (next.get('launch_session') || '') !== launchSession)
+        const changedOrdinary = nextToken === null && next.get('managed') !== '1' &&
+            (sharedLaunch || managedLaunch || (next.has('id') && next.get('id') !== launch.get('id')))
+        if (changedShare || changedManaged || changedOrdinary) {
+            sharedTarget = undefined
+            window.curConn?.close()
+            window.location.reload()
+        }
+    })
+
+    const brandName = translate(navigator.language, "capylink");
+    document.title = brandName;
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute("content", brandName);
+}

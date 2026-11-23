@@ -17,7 +17,7 @@ type WebClient struct {
 // ServerConfig 服务配置
 // @Tags WEBCLIENT
 // @Summary 服务配置
-// @Description 服务配置,给webclient提供api-server
+// @Description 返回账号服务配置及浏览器信令入口 ws_host；保留原始 id_server，ws_host 为空时浏览器沿用 id_server。
 // @Accept  json
 // @Produce  json
 // @Success 200 {object} response.Response
@@ -38,6 +38,7 @@ func (i *WebClient) ServerConfig(c *gin.Context) {
 		c,
 		gin.H{
 			"id_server":    global.Config.Capylink.IdServer,
+			"ws_host":      global.Config.Capylink.WsHost,
 			"relay_server": global.Config.Capylink.RelayServer,
 			"key":          global.Config.Capylink.Key,
 			"peers":        peers,
@@ -48,7 +49,7 @@ func (i *WebClient) ServerConfig(c *gin.Context) {
 // SharedPeer 分享的peer
 // @Tags WEBCLIENT
 // @Summary 分享的peer
-// @Description 分享的peer
+// @Description 兑换固定分享设备及临时密码，并返回浏览器信令入口 ws_host；保留原始 id_server，ws_host 为空时浏览器沿用 id_server。
 // @Accept  json
 // @Produce  json
 // @Success 200 {object} response.Response
@@ -108,6 +109,7 @@ func (i *WebClient) SharedPeer(c *gin.Context) {
 	pp.Info.Hostname = peerHostname
 	response.Success(c, gin.H{
 		"id_server":    global.Config.Capylink.IdServer,
+		"ws_host":      global.Config.Capylink.WsHost,
 		"relay_server": global.Config.Capylink.RelayServer,
 		"key":          global.Config.Capylink.Key,
 		"peer":         pp,

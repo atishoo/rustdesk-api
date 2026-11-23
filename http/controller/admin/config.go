@@ -16,7 +16,7 @@ type Config struct {
 // ServerConfig 卡皮远控服务配置
 // @Tags ADMIN
 // @Summary 卡皮远控服务配置
-// @Description 服务配置,给webclient提供api-server
+// @Description 返回原始 id_server、浏览器信令入口 ws_host 及公钥和中继配置；ws_host 来自运行时配置，为空时浏览器沿用 id_server。
 // @Accept  json
 // @Produce  json
 // @Success 200 {object} response.Response
@@ -27,6 +27,7 @@ func (co *Config) ServerConfig(c *gin.Context) {
 	mustLogin := true
 	cf := &response.ServerConfigResponse{
 		IdServer:    global.Config.Capylink.IdServer,
+		WsHost:      global.Config.Capylink.WsHost,
 		Key:         global.Config.Capylink.Key,
 		RelayServer: global.Config.Capylink.RelayServer,
 		ApiServer:   global.Config.Capylink.ApiServer,

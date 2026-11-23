@@ -93,8 +93,6 @@ func ApiInit(g *gin.Engine) {
 		gr := &api.Group{}
 		frg.GET("/users", gr.Users)
 		frg.GET("/peers", gr.Peers)
-		// /api/device-group/accessible?current=1&pageSize=100
-		frg.GET("/device-group/accessible", gr.Device)
 	}
 
 	{

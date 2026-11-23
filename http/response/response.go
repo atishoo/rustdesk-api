@@ -50,6 +50,7 @@ func Error(c *gin.Context, message string) {
 
 type ServerConfigResponse struct {
 	IdServer    string `json:"id_server"`
+	WsHost      string `json:"ws_host"` // 浏览器信令入口，来自运行时 capylink.ws-host，不映射数据库字段。
 	Key         string `json:"key"`
 	RelayServer string `json:"relay_server"`
 	ApiServer   string `json:"api_server"`

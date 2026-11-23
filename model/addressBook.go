@@ -63,7 +63,7 @@ type AddressBook struct {
 	SameServer       bool                   `json:"sameServer" gorm:"default:0;not null;"`
 	CollectionId     uint                   `json:"collection_id" gorm:"default:0;not null;index"`
 	Collection       *AddressBookCollection `json:"collection,omitempty"`
-	AmbiguousID      *bool                  `json:"ambiguous_id,omitempty" gorm:"->;-:migration"` // 优先使用经登录关联或管理员登记的设备。实际目标仍有多个候选时为 true。
+	AmbiguousID      *bool                  `json:"ambiguous_id,omitempty" gorm:"->;-:migration"` // 优先使用经 App 登录关联的设备。实际目标仍有多个候选时为 true。
 	DirectTarget     bool                   `json:"direct_target,omitempty" gorm:"-"`             // 裸 IP 或域名端口直连目标，仅在控制台列表返回。
 	TimeModel
 }
@@ -75,8 +75,9 @@ type AddressBookList struct {
 
 type AddressBookCollection struct {
 	IdModel
-	UserId uint   `json:"user_id" gorm:"default:0;not null;index"`
-	Name   string `json:"name" gorm:"default:'';not null;" validate:"required"`
+	UserId      uint   `json:"user_id" gorm:"default:0;not null;index"`
+	Name        string `json:"name" gorm:"default:'';not null;" validate:"required"`
+	DeviceCount int64  `json:"device_count" gorm:"->;-:migration"` // 列表计算的同账号本部署唯一成员设备数，不建列、不写入数据库。
 	TimeModel
 }
 type AddressBookCollectionList struct {

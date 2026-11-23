@@ -36,55 +36,10 @@ definitions:
         type: array
       user_id:
         type: integer
-      user_ids:
-        items:
-          type: integer
-        type: array
       username:
         type: string
     required:
     - id
-    type: object
-  admin.AddressBookUpdateForm:
-    properties:
-      alias:
-        type: string
-      collection_id:
-        type: integer
-      forceAlwaysRelay:
-        type: boolean
-      hash:
-        type: string
-      hostname:
-        type: string
-      id:
-        type: string
-      loginName:
-        type: string
-      online:
-        type: boolean
-      password:
-        type: string
-      platform:
-        type: string
-      rdpPort:
-        type: string
-      rdpUsername:
-        type: string
-      row_id:
-        type: integer
-      sameServer:
-        type: boolean
-      tags:
-        items:
-          type: string
-        type: array
-      user_id:
-        type: integer
-      username:
-        type: string
-    required:
-    - row_id
     type: object
   admin.AuditConnLogIds:
     properties:
@@ -126,15 +81,6 @@ definitions:
         type: string
     required:
     - new_password
-    type: object
-  admin.DeviceGroupForm:
-    properties:
-      id:
-        type: integer
-      name:
-        type: string
-    required:
-    - name
     type: object
   admin.LoginLogIds:
     properties:
@@ -204,26 +150,8 @@ definitions:
     properties:
       alias:
         type: string
-      cpu:
-        type: string
-      group_id:
-        type: integer
-      hostname:
-        type: string
-      id:
-        type: string
-      memory:
-        type: string
-      os:
-        type: string
       row_id:
         type: integer
-      username:
-        type: string
-      uuid:
-        type: string
-      version:
-        type: string
     type: object
   admin.PeerShareRecordBatchDeleteForm:
     properties:
@@ -276,22 +204,6 @@ definitions:
     - row_id
     - user_id
     type: object
-  admin.ShareByWebClientForm:
-    properties:
-      expire:
-        type: integer
-      id:
-        type: string
-      password:
-        type: string
-      row_id:
-        minimum: 1
-        type: integer
-    required:
-    - id
-    - password
-    - row_id
-    type: object
   admin.ShareRecordForm:
     properties:
       id:
@@ -341,7 +253,6 @@ definitions:
         minLength: 2
         type: string
     required:
-    - group_id
     - status
     - username
     type: object
@@ -419,7 +330,7 @@ definitions:
       alias:
         type: string
       ambiguous_id:
-        description: 优先使用经登录关联或管理员登记的设备。实际目标仍有多个候选时为 true。
+        description: 优先使用经 App 登录关联的设备。实际目标仍有多个候选时为 true。
         type: boolean
       collection:
         $ref: '#/definitions/model.AddressBookCollection'
@@ -469,6 +380,9 @@ definitions:
     properties:
       created_at:
         type: string
+      device_count:
+        description: 列表计算的同账号本部署唯一成员设备数，不建列、不写入数据库。
+        type: integer
       id:
         type: integer
       name:
@@ -524,6 +438,9 @@ definitions:
         type: integer
       ip:
         type: string
+      ip_location:
+        description: 客户端上报连接 IP 写入时的归属地。
+        type: string
       peer_id:
         type: string
       session_id:
@@ -562,6 +479,9 @@ definitions:
         type: string
       ip:
         type: string
+      ip_location:
+        description: 客户端上报文件传输 IP 写入时的归属地。
+        type: string
       is_file:
         type: boolean
       num:
@@ -590,30 +510,6 @@ definitions:
       total:
         type: integer
     type: object
-  model.DeviceGroup:
-    properties:
-      created_at:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  model.DeviceGroupList:
-    properties:
-      list:
-        items:
-          $ref: '#/definitions/model.DeviceGroup'
-        type: array
-      page:
-        type: integer
-      page_size:
-        type: integer
-      total:
-        type: integer
-    type: object
   model.LoginLog:
     properties:
       client:
@@ -626,6 +522,9 @@ definitions:
       id:
         type: integer
       ip:
+        type: string
+      ip_location:
+        description: 登录来源 IP 写入时的归属地。
         type: string
       is_deleted:
         type: integer
@@ -712,13 +611,14 @@ definitions:
       direct_target:
         description: 裸 IP 或域名端口直连目标，仅在控制台列表返回。
         type: boolean
-      group_id:
-        type: integer
       hostname:
         type: string
       id:
         type: string
       last_online_ip:
+        type: string
+      last_online_ip_location:
+        description: 设备最近心跳 IP 写入时的归属地。
         type: string
       last_online_time:
         type: integer
@@ -888,72 +788,6 @@ info:
   title: 管理系统API
   version: "1.0"
 paths:
-  /admin/address_book/batchCreate:
-    post:
-      consumes:
-      - application/json
-      description: 批量创建地址簿
-      parameters:
-      - description: 地址簿信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.AddressBookForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.AddressBook'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 批量创建地址簿
-      tags:
-      - 地址簿
-  /admin/address_book/create:
-    post:
-      consumes:
-      - application/json
-      description: 创建地址簿
-      parameters:
-      - description: 地址簿信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.AddressBookForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.AddressBook'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 创建地址簿
-      tags:
-      - 地址簿
   /admin/address_book/delete:
     post:
       consumes:
@@ -980,38 +814,6 @@ paths:
       security:
       - token: []
       summary: 地址簿删除
-      tags:
-      - 地址簿
-  /admin/address_book/detail/{id}:
-    get:
-      consumes:
-      - application/json
-      description: 地址簿详情
-      parameters:
-      - description: ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.AddressBook'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 地址簿详情
       tags:
       - 地址簿
   /admin/address_book/list:
@@ -1055,67 +857,6 @@ paths:
       security:
       - token: []
       summary: 地址簿列表
-      tags:
-      - 地址簿
-  /admin/address_book/shareByWebClient:
-    post:
-      consumes:
-      - application/json
-      description: 地址簿分享
-      parameters:
-      - description: 地址簿信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.ShareByWebClientForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 地址簿分享
-      tags:
-      - 地址簿
-  /admin/address_book/update:
-    post:
-      consumes:
-      - application/json
-      description: 仅更新提交的地址簿字段。
-      parameters:
-      - description: 地址簿信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.AddressBookUpdateForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.AddressBook'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 地址簿编辑
       tags:
       - 地址簿
   /admin/address_book_collection/create:
@@ -1531,7 +1272,8 @@ paths:
     get:
       consumes:
       - application/json
-      description: 服务配置,给webclient提供api-server
+      description: 返回原始 id_server、浏览器信令入口 ws_host 及公钥和中继配置；ws_host 来自运行时配置，为空时浏览器沿用
+        id_server。
       produces:
       - application/json
       responses:
@@ -1548,167 +1290,6 @@ paths:
       summary: 卡皮远控服务配置
       tags:
       - ADMIN
-  /admin/device_group/create:
-    post:
-      consumes:
-      - application/json
-      description: 创建设备群组
-      parameters:
-      - description: 设备群组信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.DeviceGroupForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.DeviceGroup'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 创建设备群组
-      tags:
-      - 设备群组
-  /admin/device_group/delete:
-    post:
-      consumes:
-      - application/json
-      description: 设备群组删除
-      parameters:
-      - description: 群组信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.DeviceGroupForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 设备群组删除
-      tags:
-      - 设备群组
-  /admin/device_group/detail/{id}:
-    get:
-      consumes:
-      - application/json
-      description: 设备群组详情
-      parameters:
-      - description: ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.DeviceGroup'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 设备群组详情
-      tags:
-      - 设备群组
-  /admin/device_group/list:
-    get:
-      consumes:
-      - application/json
-      description: 设备群组列表
-      parameters:
-      - description: 页码
-        in: query
-        name: page
-        type: integer
-      - description: 页大小
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.DeviceGroupList'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 设备群组列表
-      tags:
-      - 设备群组
-  /admin/device_group/update:
-    post:
-      consumes:
-      - application/json
-      description: 设备群组编辑
-      parameters:
-      - description: 群组信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.DeviceGroupForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.DeviceGroup'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 设备群组编辑
-      tags:
-      - 设备群组
   /admin/file/oss_token:
     get:
       consumes:
@@ -2847,39 +2428,6 @@ paths:
       summary: 批量设备删除
       tags:
       - 设备
-  /admin/peer/create:
-    post:
-      consumes:
-      - application/json
-      description: 设备 ID 和 UUID 均必填，每项最多 256 字节。
-      parameters:
-      - description: 设备信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/admin.PeerForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/model.Peer'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - token: []
-      summary: 创建设备
-      tags:
-      - 设备
   /admin/peer/delete:
     post:
       consumes:
@@ -2970,6 +2518,10 @@ paths:
         in: query
         name: uuids
         type: string
+      - description: 地址簿 ID；0 为各账号默认地址簿，仅返回同账号可唯一定位的本部署成员设备
+        in: query
+        name: collection_id
+        type: integer
       produces:
       - application/json
       responses:
@@ -2995,7 +2547,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 设备 ID 和 UUID 各最多 256 字节。更新 UUID 时必须提供非空值。
+      description: 仅更新已上报设备的别名。
       parameters:
       - description: 设备信息
         in: body

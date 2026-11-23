@@ -1,10 +1,11 @@
 import Connection from "./connection";
-import _sodium from "libsodium-wrappers";
-import {loadVp9} from "./codec";
+export {verify, decodeBase64, genBoxKeyPair, genSecretKey, seal, encrypt, decrypt} from "./crypto";
 import {checkIfRetry, version} from "./gen_js_from_hbb";
 import {initZstd, translate} from "./common";
 import PCMPlayer from "pcm-player";
-import {clearWebClientAccount, getServerConf, getWebClientNetworkOption, isSharedAccountOption, managedLaunch, ordinaryNetworkOptions, setWebClientAccountApi, shareToken, sharedLaunch, sharedTarget} from "./ljw";
+import {initializeWebClient, loadManagedPassword, saveManagedPassword, readManagedLaunchToken, clearWebClientAccount, getServerConf, getWebClientNetworkOption, isSharedAccountOption, managedLaunch, ordinaryNetworkOptions, setWebClientAccountApi, shareToken, sharedLaunch, sharedTarget} from "./ljw";
+
+initializeWebClient();
 
 const scopedOptionFields = {
     access_token: null,
@@ -70,14 +71,11 @@ if (YUVCanvas.WebGLFrameSink.isAvailable()) {
 } else {
     yuvWorker = new Worker("./yuv.js");
 }
-let testSpeed = [0, 0];
-
 export function draw(frame) {
     if (yuvWorker) {
         // frame's (y/u/v).bytes already detached, can not transferrable any more.
         yuvWorker.postMessage(frame);
     } else {
-        var tm0 = new Date().getTime();
         yuvCanvas.drawFrame(frame);
         var width = canvas.width;
         var height = canvas.height;
@@ -94,12 +92,6 @@ export function draw(frame) {
             flipPixels.set(pixels.subarray(i, i + row), end - i);
         }
         onRgba(flipPixels);
-        testSpeed[1] += new Date().getTime() - tm0;
-        testSpeed[0] += 1;
-        if (testSpeed[0] > 30) {
-            console.log('gl: ' + parseInt('' + testSpeed[1] / testSpeed[0]));
-            testSpeed = [0, 0];
-        }
     }
     /*
     var testCanvas = document.getElementById("test-yuv-decoder-canvas");
@@ -139,62 +131,27 @@ export function close() {
 
 export function newConn() {
     window.curConn?.close();
-    const conn = new Connection();
+    const conn = new Connection({
+        mode: managedLaunch ? 'managed' : sharedLaunch ? 'shared' : 'ordinary',
+        get managedTarget() { return window.capylinkManagedTarget; },
+        get sharedTarget() { return sharedTarget; },
+        readManagedToken: readManagedLaunchToken,
+        loadManagedPassword,
+        saveManagedPassword,
+        getServerConf,
+        getNetworkOption: getWebClientNetworkOption,
+        getPeers,
+        isCurrent: (connection) => getConn() === connection,
+        msgbox,
+        draw,
+        pushEvent,
+        copyToClipboard,
+        initAudio,
+        playAudio,
+        isDesktop,
+    });
     setConn(conn);
     return conn;
-}
-
-let sodium;
-
-export async function verify(signed, pk) {
-    if (!sodium) {
-        await _sodium.ready;
-        sodium = _sodium;
-    }
-    if (typeof pk == 'string') {
-        pk = decodeBase64(pk);
-    }
-    return sodium.crypto_sign_open(signed, pk);
-}
-
-export function decodeBase64(pk) {
-    return sodium.from_base64(pk, sodium.base64_variants.ORIGINAL);
-}
-
-export function genBoxKeyPair() {
-    const pair = sodium.crypto_box_keypair();
-    const sk = pair.privateKey;
-    const pk = pair.publicKey;
-    return [sk, pk];
-}
-
-export function genSecretKey() {
-    return sodium.crypto_secretbox_keygen();
-}
-
-export function seal(unsigned, theirPk, ourSk) {
-    const nonce = Uint8Array.from(Array(24).fill(0));
-    return sodium.crypto_box_easy(unsigned, nonce, theirPk, ourSk);
-}
-
-function makeOnce(value) {
-    var byteArray = Array(24).fill(0);
-
-    for (var index = 0; index < byteArray.length && value > 0; index++) {
-        var byte = value & 0xff;
-        byteArray[index] = byte;
-        value = (value - byte) / 256;
-    }
-
-    return Uint8Array.from(byteArray);
-};
-
-export function encrypt(unsigned, nonce, key) {
-    return sodium.crypto_secretbox_easy(unsigned, makeOnce(nonce), key);
-}
-
-export function decrypt(signed, nonce, key) {
-    return sodium.crypto_secretbox_open_easy(signed, makeOnce(nonce), key);
 }
 
 window.setByName = (name, value) => {
@@ -424,10 +381,7 @@ window.init = async () => {
     opusWorker.onmessage = (e) => {
         pcmPlayer.feed(e.data);
     }
-    loadVp9(() => {
-    });
     await initZstd();
-    console.log('init done');
 }
 
 export function getPeers() {

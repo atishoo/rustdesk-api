@@ -19,7 +19,11 @@ func (i *Index) ConfigJs(c *gin.Context) {
 	config := global.Config.Capylink
 	apiServer, _ := json.Marshal(config.ApiServer)
 	shareApiServer, _ := json.Marshal(config.WebclientShareApiServer)
-	idServer, _ := json.Marshal(config.IdServer)
+	browserServer := config.WsHost
+	if browserServer == "" {
+		browserServer = config.IdServer
+	}
+	idServer, _ := json.Marshal(browserServer)
 	relayServer, _ := json.Marshal(config.RelayServer)
 	key, _ := json.Marshal(config.Key)
 	wsHost, _ := json.Marshal(config.WsHost)

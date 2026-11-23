@@ -15,120 +15,6 @@ const docTemplateadmin = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/admin/address_book/batchCreate": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "批量创建地址簿",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿"
-                ],
-                "summary": "批量创建地址簿",
-                "parameters": [
-                    {
-                        "description": "地址簿信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.AddressBookForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBook"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book/create": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "创建地址簿",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿"
-                ],
-                "summary": "创建地址簿",
-                "parameters": [
-                    {
-                        "description": "地址簿信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.AddressBookForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBook"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/address_book/delete": {
             "post": {
                 "security": [
@@ -163,61 +49,6 @@ const docTemplateadmin = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book/detail/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿详情",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿"
-                ],
-                "summary": "地址簿详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBook"
-                                        }
-                                    }
-                                }
-                            ]
                         }
                     },
                     "500": {
@@ -286,108 +117,6 @@ const docTemplateadmin = `{
                                     "properties": {
                                         "data": {
                                             "$ref": "#/definitions/model.AddressBookList"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book/shareByWebClient": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "地址簿分享",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿"
-                ],
-                "summary": "地址簿分享",
-                "parameters": [
-                    {
-                        "description": "地址簿信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.ShareByWebClientForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/address_book/update": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "仅更新提交的地址簿字段。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "地址簿"
-                ],
-                "summary": "地址簿编辑",
-                "parameters": [
-                    {
-                        "description": "地址簿信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.AddressBookUpdateForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.AddressBook"
                                         }
                                     }
                                 }
@@ -1088,7 +817,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "服务配置,给webclient提供api-server",
+                "description": "返回原始 id_server、浏览器信令入口 ws_host 及公钥和中继配置；ws_host 来自运行时配置，为空时浏览器沿用 id_server。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1104,280 +833,6 @@ const docTemplateadmin = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/device_group/create": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "创建设备群组",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备群组"
-                ],
-                "summary": "创建设备群组",
-                "parameters": [
-                    {
-                        "description": "设备群组信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.DeviceGroupForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.DeviceGroup"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/device_group/delete": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "设备群组删除",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备群组"
-                ],
-                "summary": "设备群组删除",
-                "parameters": [
-                    {
-                        "description": "群组信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.DeviceGroupForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/device_group/detail/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "设备群组详情",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备群组"
-                ],
-                "summary": "设备群组详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.DeviceGroup"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/device_group/list": {
-            "get": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "设备群组列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备群组"
-                ],
-                "summary": "设备群组列表",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "页大小",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.DeviceGroupList"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/device_group/update": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "设备群组编辑",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备群组"
-                ],
-                "summary": "设备群组编辑",
-                "parameters": [
-                    {
-                        "description": "群组信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.DeviceGroupForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.DeviceGroup"
-                                        }
-                                    }
-                                }
-                            ]
                         }
                     },
                     "500": {
@@ -3280,63 +2735,6 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "/admin/peer/create": {
-            "post": {
-                "security": [
-                    {
-                        "token": []
-                    }
-                ],
-                "description": "设备 ID 和 UUID 均必填，每项最多 256 字节。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备"
-                ],
-                "summary": "创建设备",
-                "parameters": [
-                    {
-                        "description": "设备信息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/admin.PeerForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.Peer"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/peer/delete": {
             "post": {
                 "security": [
@@ -3491,6 +2889,12 @@ const docTemplateadmin = `{
                         "description": "uuids 用逗号分隔",
                         "name": "uuids",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "地址簿 ID；0 为各账号默认地址簿，仅返回同账号可唯一定位的本部署成员设备",
+                        "name": "collection_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3528,7 +2932,7 @@ const docTemplateadmin = `{
                         "token": []
                     }
                 ],
-                "description": "设备 ID 和 UUID 各最多 256 字节。更新 UUID 时必须提供非空值。",
+                "description": "仅更新已上报设备的别名。",
                 "consumes": [
                     "application/json"
                 ],
@@ -4726,74 +4130,6 @@ const docTemplateadmin = `{
                 "user_id": {
                     "type": "integer"
                 },
-                "user_ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "admin.AddressBookUpdateForm": {
-            "type": "object",
-            "required": [
-                "row_id"
-            ],
-            "properties": {
-                "alias": {
-                    "type": "string"
-                },
-                "collection_id": {
-                    "type": "integer"
-                },
-                "forceAlwaysRelay": {
-                    "type": "boolean"
-                },
-                "hash": {
-                    "type": "string"
-                },
-                "hostname": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "loginName": {
-                    "type": "string"
-                },
-                "online": {
-                    "type": "boolean"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "platform": {
-                    "type": "string"
-                },
-                "rdpPort": {
-                    "type": "string"
-                },
-                "rdpUsername": {
-                    "type": "string"
-                },
-                "row_id": {
-                    "type": "integer"
-                },
-                "sameServer": {
-                    "type": "boolean"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "user_id": {
-                    "type": "integer"
-                },
                 "username": {
                     "type": "string"
                 }
@@ -4857,20 +4193,6 @@ const docTemplateadmin = `{
                 },
                 "old_password": {
                     "description": "已设置本地密码时必填",
-                    "type": "string"
-                }
-            }
-        },
-        "admin.DeviceGroupForm": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
                     "type": "string"
                 }
             }
@@ -4978,35 +4300,8 @@ const docTemplateadmin = `{
                 "alias": {
                     "type": "string"
                 },
-                "cpu": {
-                    "type": "string"
-                },
-                "group_id": {
-                    "type": "integer"
-                },
-                "hostname": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "memory": {
-                    "type": "string"
-                },
-                "os": {
-                    "type": "string"
-                },
                 "row_id": {
                     "type": "integer"
-                },
-                "username": {
-                    "type": "string"
-                },
-                "uuid": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
                 }
             }
         },
@@ -5087,29 +4382,6 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "admin.ShareByWebClientForm": {
-            "type": "object",
-            "required": [
-                "id",
-                "password",
-                "row_id"
-            ],
-            "properties": {
-                "expire": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "row_id": {
-                    "type": "integer",
-                    "minimum": 1
-                }
-            }
-        },
         "admin.ShareRecordForm": {
             "type": "object",
             "properties": {
@@ -5145,7 +4417,6 @@ const docTemplateadmin = `{
         "admin.UserForm": {
             "type": "object",
             "required": [
-                "group_id",
                 "status",
                 "username"
             ],
@@ -5303,7 +4574,7 @@ const docTemplateadmin = `{
                     "type": "string"
                 },
                 "ambiguous_id": {
-                    "description": "优先使用经登录关联或管理员登记的设备。实际目标仍有多个候选时为 true。",
+                    "description": "优先使用经 App 登录关联的设备。实际目标仍有多个候选时为 true。",
                     "type": "boolean"
                 },
                 "collection": {
@@ -5380,6 +4651,10 @@ const docTemplateadmin = `{
             "properties": {
                 "created_at": {
                     "type": "string"
+                },
+                "device_count": {
+                    "description": "列表计算的同账号本部署唯一成员设备数，不建列、不写入数据库。",
+                    "type": "integer"
                 },
                 "id": {
                     "type": "integer"
@@ -5462,6 +4737,10 @@ const docTemplateadmin = `{
                 "ip": {
                     "type": "string"
                 },
+                "ip_location": {
+                    "description": "客户端上报连接 IP 写入时的归属地。",
+                    "type": "string"
+                },
                 "peer_id": {
                     "type": "string"
                 },
@@ -5520,6 +4799,10 @@ const docTemplateadmin = `{
                 "ip": {
                     "type": "string"
                 },
+                "ip_location": {
+                    "description": "客户端上报文件传输 IP 写入时的归属地。",
+                    "type": "string"
+                },
                 "is_file": {
                     "type": "boolean"
                 },
@@ -5563,43 +4846,6 @@ const docTemplateadmin = `{
                 }
             }
         },
-        "model.DeviceGroup": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "model.DeviceGroupList": {
-            "type": "object",
-            "properties": {
-                "list": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.DeviceGroup"
-                    }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
         "model.LoginLog": {
             "type": "object",
             "properties": {
@@ -5617,6 +4863,10 @@ const docTemplateadmin = `{
                     "type": "integer"
                 },
                 "ip": {
+                    "type": "string"
+                },
+                "ip_location": {
+                    "description": "登录来源 IP 写入时的归属地。",
                     "type": "string"
                 },
                 "is_deleted": {
@@ -5746,9 +4996,6 @@ const docTemplateadmin = `{
                     "description": "裸 IP 或域名端口直连目标，仅在控制台列表返回。",
                     "type": "boolean"
                 },
-                "group_id": {
-                    "type": "integer"
-                },
                 "hostname": {
                     "type": "string"
                 },
@@ -5756,6 +5003,10 @@ const docTemplateadmin = `{
                     "type": "string"
                 },
                 "last_online_ip": {
+                    "type": "string"
+                },
+                "last_online_ip_location": {
+                    "description": "设备最近心跳 IP 写入时的归属地。",
                     "type": "string"
                 },
                 "last_online_time": {

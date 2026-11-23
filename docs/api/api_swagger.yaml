@@ -622,44 +622,6 @@ paths:
       summary: 用户信息
       tags:
       - 用户
-  /device-group/accessible:
-    get:
-      consumes:
-      - application/json
-      description: 机器
-      parameters:
-      - description: 页码
-        in: query
-        name: page
-        type: integer
-      - description: 每页数量
-        in: query
-        name: pageSize
-        type: integer
-      - description: 状态
-        in: query
-        name: status
-        type: integer
-      - description: accessible
-        in: query
-        name: accessible
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.DataResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - BearerAuth: []
-      summary: 设备
-      tags:
-      - 群组
   /heartbeat:
     post:
       consumes:
@@ -842,7 +804,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 服务配置,给webclient提供api-server
+      description: 返回账号服务配置及浏览器信令入口 ws_host；保留原始 id_server，ws_host 为空时浏览器沿用 id_server。
       produces:
       - application/json
       responses:
@@ -884,7 +846,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 分享的peer
+      description: 兑换固定分享设备及临时密码，并返回浏览器信令入口 ws_host；保留原始 id_server，ws_host 为空时浏览器沿用
+        id_server。
       produces:
       - application/json
       responses:

@@ -65,9 +65,13 @@ func (abc *AddressBookCollection) List(c *gin.Context) {
 	}
 	u := service.AllService.UserService.CurUser(c)
 	query.UserId = int(u.Id)
-	res := service.AllService.AddressBookService.ListCollection(query.Page, query.PageSize, func(tx *gorm.DB) {
+	res, err := service.AllService.AddressBookService.ListCollection(query.Page, query.PageSize, func(tx *gorm.DB) {
 		tx.Where("user_id = ?", query.UserId)
 	})
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
+	}
 	response.Success(c, res)
 }
 

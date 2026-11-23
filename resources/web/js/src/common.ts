@@ -7,7 +7,6 @@ let decompressor: zstd.ZSTDDecoder;
 export async function initZstd() {
   const tmp = new zstd.ZSTDDecoder();
   await tmp.init();
-  console.log("zstd ready");
   decompressor = tmp;
 }
 

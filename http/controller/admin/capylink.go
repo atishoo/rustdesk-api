@@ -151,6 +151,7 @@ func (r *Capylink) SendCmd(c *gin.Context) {
 		return
 	}
 
+	locationOption := rc.Option
 	port := 0
 	switch rc.Target {
 	case model.ServerCmdTargetIdServer:
@@ -170,7 +171,12 @@ func (r *Capylink) SendCmd(c *gin.Context) {
 		response.Fail(c, 101, err.Error())
 		return
 	}
-	response.Success(c, res)
+	locations, err := service.AllService.ServerCmdService.CommandIPLocations(rc.Target, rc.Cmd, locationOption, res)
+	if err != nil {
+		response.Fail(c, 101, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"output": res, "ip_locations": locations})
 }
 
 func (r *Capylink) Status(c *gin.Context) {

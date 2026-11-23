@@ -57,7 +57,22 @@ desktop software that provides self-hosted solutions.
 ### API Service
 Basic implementation of the PC client's primary interfaces.Supports the Personal version api, which can be enabled by configuring the `capylink.personal` file or the `CAPYLINK_API_CAPYLINK_PERSONAL` environment variable.
 
-Configure the deployment API address, then sign in from the client account page. After signing in, use address books and device groups to access authorized devices.
+Configure the deployment API address, then sign in from the client account page. After signing in, use address books to access authorized devices.
+
+### IP location
+
+The API uses the [official ip2region Go implementation](https://github.com/lionsoul2014/ip2region/tree/cba49ef11b4051bc25334a3c5712715d636de90d/binding/golang) and bundled offline IPv4/IPv6 databases. Login, connection and file audit records, and device heartbeats store a location snapshot together with their IP. Operational blacklist, blocklist, usage, IP blocker and IP change commands also persist observed addresses in `ip_locations`. The console displays these server-computed values. Server addresses, trusted proxies and direct connection targets retain their connection semantics. Existing records are not backfilled.
+
+The location contains available country, province, city and ISP data. Private and loopback addresses are labelled separately; invalid or unlisted addresses are unknown, and empty IPs have no location. Audits retain the reported client IP; login and heartbeat use the request IP under the existing trusted proxy policy.
+
+Fresh installations create the current schema at startup. Existing databases are never automatically altered or upgraded by version. Existing deployments need their missing schema completed separately; do not change `versions` or convert/backfill old records. New location columns default to an empty string; subsequent device heartbeats update the device location.
+
+The `gin.resources-path` directory must contain `ip2region/ip2region_v4.xdb` and `ip2region/ip2region_v6.xdb`; missing or invalid databases prevent startup. Standard releases and images include both via the existing resources packaging. They are validated and loaded into memory once (approximately 46 MiB); restart the API after updating them.
+
+Both databases and the Go dependency are pinned to upstream commit `cba49ef11b4051bc25334a3c5712715d636de90d`. Data comes from its `data/` directory under Apache-2.0 or MIT; the upstream notice is included in `resources/ip2region/LICENSE.md`. Replace both databases from the same official version and verify real queries when updating. Current SHA-256 values:
+
+- `ip2region_v4.xdb`: `4ed5d3398f0a72346a6cec780c57601bb6977fa4f29e9682cd60a66e3478c542`
+- `ip2region_v6.xdb`: `1f0be1ffbbc3e4eeef10f354e01355f22f57ec649a496a17fd602539f3d384c1`
 
 ### Web Admin
 
@@ -93,6 +108,8 @@ displaying data. Build the console from the companion Web repository. [capylink-
 11. **LDAP support**. Once LDAP is configured on the API server, users can sign in with directory accounts (tested with AD and OpenLDAP). Before enabling `ldap.user.sync`, keep an enabled local administrator outside LDAP synchronization and verify that it can sign in independently. Synchronization applies directory administrator role removals even when only one administrator remains. If the directory verifies the credentials but the role lookup or synchronization fails, the sign-in is denied.
   
 ### Web Client:
+
+The console uses the WebSocket endpoint (`ws_host`, falling back to `id_server`), public key, and Relay configuration returned by the API. After verifying the current account session, endpoint, and public key, both WS and WSS signaling carry the verified account token. The final request to the relay never includes the account token.
 
 1. If you're already logged into the admin panel, the web client will log in automatically.
 2. If you're not logged in, simply click the login button in the top right corner, and the API server will be

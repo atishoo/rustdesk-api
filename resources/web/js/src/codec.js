@@ -21,23 +21,26 @@
 */
 import { simd } from "wasm-feature-detect";
 
-export async function loadVp9(callback) {
-  // Multithreading is used only if `options.threading` is true. 
-  // This requires browser support for the new `SharedArrayBuffer` and `Atomics` APIs, 
-  // currently available in Firefox and Chrome with experimental flags enabled.
-  // 所有主流浏览器均默认于2018年1月5日禁用SharedArrayBuffer
+export async function loadVp9(callback, signal) {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
   const isSIMD = await simd();
-  console.log('isSIMD: ' + isSIMD);
-  window.OGVLoader.loadClass(
-    isSIMD ? "OGVDecoderVideoVP9SIMDW" : "OGVDecoderVideoVP9W",
-    (videoCodecClass) => {
-      window.videoCodecClass = videoCodecClass;
-      videoCodecClass({ videoFormat: {} }).then((decoder) => {
-        decoder.init(() => {
-          callback(decoder);
-        })
-      })
-    },
-    { worker: true, threading: true }
-  );
+  const Codec = await new Promise((resolve) => {
+    // The OGV worker factory captures one Worker; each connection needs its own factory.
+    window.OGVLoader.loadClass(
+      isSIMD ? "OGVDecoderVideoVP9SIMDW" : "OGVDecoderVideoVP9W",
+      resolve,
+      { worker: true, threading: true },
+    );
+  });
+  const decoder = await Codec({ videoFormat: {} });
+  await new Promise((resolve, reject) => {
+    const clear = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); };
+    const abort = () => { clear(); decoder.close(); reject(new DOMException("Aborted", "AbortError")); };
+    const timer = setTimeout(() => { clear(); decoder.close(); reject(new Error("视频解码器初始化超时")); }, 15000);
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
+    decoder.init(() => { clear(); resolve(); });
+  });
+  callback?.(decoder);
+  return decoder;
 }

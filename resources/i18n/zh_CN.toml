@@ -24,9 +24,9 @@ one = "数据已存在。"
 other = "数据已存在。"
 
 [InvalidAddressBookTags]
-description = "地址簿标签必须属于目标集合"
-one = "请选择目标地址簿集合中已有的标签。"
-other = "请选择目标地址簿集合中已有的标签。"
+description = "地址簿标签必须为所属账号已有标签"
+one = "请选择所属账号已有的标签。"
+other = "请选择所属账号已有的标签。"
 
 [ReferencedTagMove]
 description = "不能移动正在使用的标签"

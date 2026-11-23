@@ -94,11 +94,6 @@ func (g *Group) Peers(c *gin.Context) {
 		namesById[user.Id] = user.Username
 		userIds = append(userIds, user.Id)
 	}
-	dGroupNameById := make(map[uint]string)
-	allGroup := service.AllService.GroupService.DeviceGroupList(1, 999, nil)
-	for _, group := range allGroup.DeviceGroups {
-		dGroupNameById[group.Id] = group.Name
-	}
 	page := q.Page
 	if page == 0 {
 		page = q.Current
@@ -110,44 +105,12 @@ func (g *Group) Peers(c *gin.Context) {
 	}
 	data := make([]*apiResp.GroupPeerPayload, 0, len(peers))
 	for _, peer := range peers {
-		var dGroupName string
-		if peer.GroupId != nil {
-			dGroupName = dGroupNameById[*peer.GroupId]
-		}
 		pp := &apiResp.GroupPeerPayload{}
-		pp.FromPeer(peer, namesById[peer.UserId], dGroupName)
+		pp.FromPeer(peer, namesById[peer.UserId])
 		data = append(data, pp)
 	}
 	c.JSON(http.StatusOK, response.DataResponse{
 		Total: uint(total),
 		Data:  data,
-	})
-}
-
-// Device
-// @Tags 群组
-// @Summary 设备
-// @Description 机器
-// @Accept  json
-// @Produce  json
-// @Param page query int false "页码"
-// @Param pageSize query int false "每页数量"
-// @Param status query int false "状态"
-// @Param accessible query string false "accessible"
-// @Success 200 {object} response.DataResponse
-// @Failure 500 {object} response.Response
-// @Router /device-group/accessible [get]
-// @Security BearerAuth
-func (g *Group) Device(c *gin.Context) {
-	u := service.AllService.UserService.CurUser(c)
-	if !service.AllService.UserService.IsAdmin(u) {
-		response.Error(c, "Permission denied")
-		return
-	}
-	allGroup := service.AllService.GroupService.DeviceGroupList(1, 999, nil)
-
-	c.JSON(http.StatusOK, response.DataResponse{
-		Total: 0,
-		Data:  allGroup.DeviceGroups,
 	})
 }

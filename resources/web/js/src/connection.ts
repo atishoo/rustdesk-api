@@ -2,27 +2,40 @@ import Websock from "./websock";
 import * as message from "./message.js";
 import * as rendezvous from "./rendezvous.js";
 import { loadVp9 } from "./codec";
+import { decodeSharedPassword } from "./ljw";
 import * as sha256 from "fast-sha256";
-import * as globals from "./globals";
+import * as crypto from "./crypto";
 import { decompress, getWebClientUri, mapKey, matchesRendezvous, mixedContentWebSocketError, PORT, proxyIdPath, sleep, websocketScheme } from "./common";
-import { decodeSharedPassword, getServerConf, getWebClientNetworkOption, loadManagedPassword, managedLaunch, readManagedLaunchToken, saveManagedPassword, sharedLaunch, sharedTarget } from "./ljw";
 
-// only the first is used to init `HOST`
-const HOSTS = [
-  "rs-sg.rustdesk.com",
-  "rs-cn.rustdesk.com",
-  "rs-us.rustdesk.com",
-];
-let HOST = localStorage.getItem("rendezvous-server") || HOSTS[0];
 //根据协议设置为ws或wss
-const managedSessionChanged = new Error("登录状态无法验证，请返回控制台重新打开 Web Client");
+const managedSessionChanged = new Error("登录状态无法验证，请重新登录后再连接。");
 const sharedPasswordRejected = "设备拒绝了分享密码，请联系分享者生成新的分享链接。";
 
 type MsgboxCallback = (type: string, title: string, text: string) => void;
-type DrawCallback = (data: Uint8Array) => void;
+type DrawCallback = (data: any) => void;
 type RelayTarget = { server: string; relay: string };
-type ConnectionTarget = RelayTarget & { id: string; key: string };
+export type ConnectionTarget = RelayTarget & { id: string; key: string };
 type SharedTarget = ConnectionTarget & { passwordBase64: string | undefined; options: { info: object } };
+
+export interface ConnectionRuntime {
+  mode: "managed" | "shared" | "ordinary";
+  managedTarget?: ConnectionTarget;
+  sharedTarget?: SharedTarget;
+  readManagedToken(): string | undefined;
+  loadManagedPassword(target: ConnectionTarget): { password?: string; remember?: boolean };
+  saveManagedPassword(target: ConnectionTarget, password?: string, expected?: string): void;
+  getServerConf(token: string): Promise<any> | undefined;
+  getNetworkOption(name: string): string | null;
+  getPeers(): Record<string, any>;
+  isCurrent(connection: Connection): boolean;
+  msgbox: MsgboxCallback;
+  draw: DrawCallback;
+  pushEvent(name: string, payload: any): void;
+  copyToClipboard(value: string): void;
+  initAudio(channels: number, sampleRate: number): void;
+  playAudio(packet: Uint8Array): void;
+  isDesktop(): boolean;
+}
 
 declare global {
   interface Window {
@@ -45,6 +58,8 @@ export default class Connection {
   _peerInfo: message.PeerInfo | undefined;
   _firstFrame: Boolean | undefined;
   _videoDecoder: any;
+  _videoGeneration = 0;
+  _videoLoad: AbortController | undefined;
   _password: Uint8Array | undefined;
   _managedTarget: ConnectionTarget | undefined;
   _managedSessionCheck: AbortController | undefined;
@@ -56,23 +71,23 @@ export default class Connection {
   _sharedTarget: SharedTarget | undefined;
   _sharePasswordTried = false;
   _options: any;
-  _videoTestSpeed: number[];
   //_cursors: { [name: number]: any };
 
-  constructor() {
-    this._msgbox = globals.msgbox;
-    this._draw = globals.draw;
+  constructor(private runtime: ConnectionRuntime) {
+    this._msgbox = runtime.msgbox;
+    this._draw = runtime.draw;
     this._msgs = [];
     this._id = "";
-    if (managedLaunch) this._options = {};
-    this._videoTestSpeed = [0, 0];
+    if (runtime.mode === "managed") this._options = {};
     //this._cursors = {};
   }
 
   async start(id: string) {
+    const generation = this._startGeneration + 1;
     try {
       await this._start(id);
     } catch (e: any) {
+      if (generation !== this._startGeneration) return;
       if (e === managedSessionChanged) {
         this.msgbox("error", "Login Error", managedSessionChanged.message);
         return;
@@ -80,37 +95,41 @@ export default class Connection {
       this.msgbox(
         "error",
         "Connection Error",
-        e.type == "close" ? "Reset by the peer" : String(e)
+        e?.type == "close" ? "Reset by the peer" : String(e)
       );
     }
   }
 
   async _start(id: string) {
     const generation = ++this._startGeneration;
-    const managedTarget = window.capylinkManagedTarget;
-    if (managedLaunch && (!id || !managedTarget || managedTarget.id !== id)) throw new Error("受管 Web Client 配置不可用");
-    if (sharedLaunch) {
+    this._peerInfo = undefined;
+    this._firstFrame = false;
+    this._hash = undefined;
+    const managedTarget = this.runtime.managedTarget;
+    const sharedTarget = this.runtime.sharedTarget;
+    if (this.runtime.mode === "managed" && (!id || !managedTarget || managedTarget.id !== id)) throw new Error("受管远程配置不可用");
+    if (this.runtime.mode === "shared") {
       if (!sharedTarget || sharedTarget.id !== id) throw new Error("分享链接不可用或连接目标无效");
       if (sharedTarget.passwordBase64 === undefined) {
         this.msgbox("error", "Login Error", sharedPasswordRejected);
         return;
       }
     }
-    this._managedTarget = managedLaunch ? managedTarget : undefined;
-    this._sharedTarget = sharedLaunch ? sharedTarget : undefined;
+    this._managedTarget = this.runtime.mode === "managed" ? managedTarget : undefined;
+    this._sharedTarget = this.runtime.mode === "shared" ? sharedTarget : undefined;
     if (this._sharedTarget) {
       this._password = undefined;
       this._sharePasswordTried = false;
     }
     const target = this._managedTarget ?? this._sharedTarget;
-    const requestToken = this._managedTarget ? readManagedLaunchToken() : undefined;
+    const requestToken = this._managedTarget ? this.runtime.readManagedToken() : undefined;
     if (this._managedTarget) {
       if (!requestToken) throw managedSessionChanged;
       this._managedSessionCheck?.abort();
       const check = new AbortController();
       this._managedSessionCheck = check;
       const timeout = window.setTimeout(() => check.abort(), 5000);
-      let deployment: { id_server: string; key: string; relay_server: string } | undefined;
+      let deployment: { id_server: string; ws_host?: string; key: string; relay_server: string } | undefined;
       try {
         const response = await fetch("/api/admin/config/server", {
           headers: { "api-token": requestToken },
@@ -131,32 +150,36 @@ export default class Connection {
       }
       if (this._managedSessionCheck !== check) return;
       this._managedSessionCheck = undefined;
-      if (!deployment || readManagedLaunchToken() !== requestToken) throw managedSessionChanged;
-      if (deployment.id_server !== this._managedTarget.server || deployment.key !== this._managedTarget.key ||
+      if (!deployment || this.runtime.readManagedToken() !== requestToken) throw managedSessionChanged;
+      if ((deployment.ws_host || deployment.id_server) !== this._managedTarget.server || deployment.key !== this._managedTarget.key ||
           deployment.relay_server !== this._managedTarget.relay) {
-        throw new Error("服务端配置已变化，请返回控制台重新打开 Web Client");
+        throw new Error("服务配置已变化，请关闭该会话后重新选择设备。");
       }
       this._managedToken = requestToken;
-      const { password, remember } = loadManagedPassword(this._managedTarget);
+      const { password, remember } = this.runtime.loadManagedPassword(this._managedTarget);
       this._options.password = password;
       this._options.remember = remember;
       this._password = undefined;
       this._hash = undefined;
       this._managedPasswordAttempt = undefined;
     }
-    const accountToken = sessionStorage.getItem("access_token");
-    if (sharedLaunch && !accountToken) {
-      this.msgbox("error", "Login Required", "请先登录账号后再连接分享设备。");
+    const accountToken = this._managedTarget ? null : sessionStorage.getItem("access_token");
+    if (!this._managedTarget && !accountToken) {
+      this.msgbox("error", "Login Required", "请先登录账号后再连接设备。");
       return;
     }
     if (!target) this._ordinaryAccountToken = accountToken;
-    const deployment = accountToken ? await getServerConf(accountToken) : undefined;
-    if (accountToken && (generation !== this._startGeneration || globals.getConn() !== this ||
+    const deployment = accountToken ? await this.runtime.getServerConf(accountToken) : undefined;
+    if (accountToken && (generation !== this._startGeneration || !this.runtime.isCurrent(this) ||
         sessionStorage.getItem("access_token") !== accountToken)) return;
     if (!target) {
+      const server = deployment?.ws_host || deployment?.id_server;
+      if (!deployment || typeof server !== "string" || !server || typeof deployment.key !== "string") {
+        throw new Error("服务器连接配置加载失败，请检查后台配置后重试。");
+      }
       const network = {
-        server: getWebClientNetworkOption("custom-rendezvous-server"),
-        key: getWebClientNetworkOption("key"),
+        server,
+        key: deployment.key,
       };
       if (this._ordinaryNetwork &&
           (this._ordinaryNetwork.server !== network.server || this._ordinaryNetwork.key !== network.key)) {
@@ -166,11 +189,11 @@ export default class Connection {
       }
       this._ordinaryNetwork = network;
     }
-    const uri = target ? getWebClientUri(target.server, false) : getDefaultUri();
+    const uri = getWebClientUri(target?.server || this._ordinaryNetwork?.server || "", false);
     const signalUri = new URL(uri);
     this._id = id;
     if (!this._options) {
-      this._options = this._sharedTarget ? { ...this._sharedTarget.options } : globals.getPeers()[id] || {};
+      this._options = this._sharedTarget ? { ...this._sharedTarget.options } : this.runtime.getPeers()[id] || {};
     }
     if (!this._sharedTarget && !this._password) {
       const p = this.getOption("password");
@@ -188,39 +211,35 @@ export default class Connection {
         this._msgs.splice(0, 1);
       }
     }, 1);
-    this.loadVideoDecoder();
+    await this.loadVideoDecoder();
+    if (generation !== this._startGeneration || !this.runtime.isCurrent(this)) return;
     const ws = new Websock(uri, true);
     this._ws = ws;
-    console.log(
-      new Date() + ": Conntecting to rendezvoous server: " + uri + ", for " + id
-    );
     await ws.open();
     if (this._ws !== ws) return;
-    if (this._managedTarget && readManagedLaunchToken() !== requestToken) {
+    if (this._managedTarget && this.runtime.readManagedToken() !== requestToken) {
       this.close();
       throw managedSessionChanged;
     }
-    console.log(new Date() + ": Connected to rendezvoous server");
+
     const conn_type = rendezvous.ConnType.DEFAULT_CONN;
     const nat_type = rendezvous.NatType.SYMMETRIC;
     const key = this.getRendezvousKey() || "";
     let token: string | undefined;
     const defaultApi = sessionStorage.getItem("webclient-config-api-server");
     let relayTarget = target ?? (sessionStorage.getItem("api-server") === defaultApi ? getPublishedRelayTarget(signalUri) : undefined);
-    if (this._managedTarget && signalUri.protocol === "wss:") {
+    if (this._managedTarget) {
       token = requestToken;
     } else if (accountToken && sessionStorage.getItem("access_token") === accountToken &&
                deployment?.apiServer === (window.capylinkWebClientApiServer || sessionStorage.getItem("api-server") || location.origin) &&
-               deployment?.key === key && matchesRendezvous(signalUri, deployment.id_server)) {
-      if (signalUri.protocol === "wss:") token = accountToken;
-      relayTarget = getPublishedRelayTarget(signalUri, {
-        server: deployment.id_server,
-        relay: typeof deployment.relay_server === "string" ? deployment.relay_server : "",
-      }) ?? { server: deployment.id_server, relay: "" };
-    }
-    const manualRelay = !target && getWebClientNetworkOption("relay-server");
-    if (manualRelay) {
-      relayTarget = getPublishedRelayTarget(signalUri, { server: uri, relay: manualRelay }) ?? relayTarget;
+               deployment?.key === key && matchesRendezvous(signalUri, deployment.ws_host || deployment.id_server)) {
+      token = accountToken;
+      if (!target) {
+        relayTarget = getPublishedRelayTarget(signalUri, {
+          server: deployment.ws_host || deployment.id_server,
+          relay: typeof deployment.relay_server === "string" ? deployment.relay_server : "",
+        }) ?? { server: deployment.ws_host || deployment.id_server, relay: "" };
+      }
     }
     const punch_hole_request = rendezvous.PunchHoleRequest.fromPartial({
       id: this.deviceId(),
@@ -233,7 +252,7 @@ export default class Connection {
     const msg = (await ws.next()) as rendezvous.RendezvousMessage;
     if (this._ws !== ws) return;
     ws.close();
-    console.log(new Date() + ": Got relay response", msg);
+
     const phr = msg.punch_hole_response;
     const rr = msg.relay_response;
     if (phr) {
@@ -268,14 +287,14 @@ export default class Connection {
 
   async connectRelay(rr: rendezvous.RelayResponse, target?: RelayTarget) {
     const pk = rr.pk;
-    const uri = getWebClientRelayUri(target, rr.relay_server);
+    const uri = getWebClientRelayUri(target, rr.relay_server, this._ordinaryNetwork?.server || "");
     const uuid = rr.uuid;
-    console.log(new Date() + ": Connecting to relay server: " + uri);
+
     const ws = new Websock(uri, false);
     this._ws = ws;
     await ws.open();
     if (this._ws !== ws) return;
-    console.log(new Date() + ": Connected to relay server");
+
     const request_relay = rendezvous.RequestRelay.fromPartial({
       licence_key: this.getRendezvousKey() || undefined,
       uuid,
@@ -294,7 +313,7 @@ export default class Connection {
       this.msgbox("error", "Login Error", this._sharedTarget ? "无法验证分享目标的身份，连接已关闭。" : "无法验证设备身份，连接已关闭。");
       return;
     }
-    globals.pushEvent("connection_ready", { secure, direct: false });
+    this.runtime.pushEvent("connection_ready", { secure, direct: false });
     await this.msgLoop(ws);
   }
 
@@ -317,7 +336,7 @@ export default class Connection {
     if (pk) {
       const RS_PK = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
       try {
-        pk = await globals.verify(pk, this.getRendezvousKey() || RS_PK);
+        pk = await crypto.verify(pk, this.getRendezvousKey() || RS_PK);
         if (pk) {
           const idpk = message.IdPk.decode(pk);
           pk = idpk.id === this.deviceId() ? idpk.pk : undefined;
@@ -344,7 +363,7 @@ export default class Connection {
       return fallback();
     }
     try {
-      signedId = await globals.verify(signedId.id, Uint8Array.from(pk!));
+      signedId = await crypto.verify(signedId.id, Uint8Array.from(pk!));
     } catch (e) {
       console.error(e);
       return fallback();
@@ -362,16 +381,16 @@ export default class Connection {
       );
       return fallback();
     }
-    const [mySk, asymmetric_value] = globals.genBoxKeyPair();
-    const secret_key = globals.genSecretKey();
-    const symmetric_value = globals.seal(secret_key, theirPk, mySk);
+    const [mySk, asymmetric_value] = crypto.genBoxKeyPair();
+    const secret_key = crypto.genSecretKey();
+    const symmetric_value = crypto.seal(secret_key, theirPk, mySk);
     const public_key = message.PublicKey.fromPartial({
       asymmetric_value,
       symmetric_value,
     });
     ws.sendMessage({ public_key });
     ws.setSecretKey(secret_key);
-    console.log("secured");
+
     return true;
   }
 
@@ -379,7 +398,6 @@ export default class Connection {
     while (this._ws === ws) {
       const msg = (await ws.next()) as message.Message;
       if (this._ws !== ws) return;
-      // console.log("msg", msg);
       if (msg?.hash) {
         this._hash = msg?.hash;
         if (this._sharedTarget) {
@@ -400,7 +418,7 @@ export default class Connection {
         this.login();
       } else if (msg?.test_delay) {
         const test_delay = msg?.test_delay;
-        console.log(test_delay);
+
         if (!test_delay.from_client) {
           this._ws?.sendMessage({ test_delay });
         }
@@ -419,7 +437,7 @@ export default class Connection {
               return;
             }
             if (this._managedTarget && managedPasswordAttempt) {
-              saveManagedPassword(this._managedTarget, undefined, managedPasswordAttempt);
+              this.runtime.saveManagedPassword(this._managedTarget, undefined, managedPasswordAttempt);
               delete this._options.password;
             }
             this.msgbox(
@@ -439,67 +457,47 @@ export default class Connection {
         const cb = msg?.clipboard;
         if (cb.compress) {
           const c = await decompress(cb.content);
+          if (this._ws !== ws) return;
           if (!c) continue;
           cb.content = c;
         }
         try {
-          globals.copyToClipboard(new TextDecoder().decode(cb.content));
+          this.runtime.copyToClipboard(new TextDecoder().decode(cb.content));
         } catch (e) {
           console.error(e);
         }
-        // globals.pushEvent("clipboard", cb);
       } else if (msg?.cursor_data) {
         const cd = msg?.cursor_data;
         const c = await decompress(cd.colors);
+        if (this._ws !== ws) return;
         if (!c) continue;
         cd.colors = c;
-        globals.pushEvent("cursor_data", cd);
-        /*
-        let ctx = cursorCanvas.getContext("2d");
-        cursorCanvas.width = cd.width;
-        cursorCanvas.height = cd.height;
-        let imgData = new ImageData(
-          new Uint8ClampedArray(c),
-          cd.width,
-          cd.height
-        );
-        ctx?.clearRect(0, 0, cd.width, cd.height);
-        ctx?.putImageData(imgData, 0, 0);
-        let url = cursorCanvas.toDataURL();
-        const img = document.createElement("img");
-        img.src = url;
-        this._cursors[cd.id] = img;
-        //cursorCanvas.width /= 2.;
-        //cursorCanvas.height /= 2.;
-        //ctx?.drawImage(img, cursorCanvas.width, cursorCanvas.height);
-        url = cursorCanvas.toDataURL();
-        document.body.style.cursor =
-          "url(" + url + ")" + cd.hotx + " " + cd.hoty + ", default";
-        console.log(document.body.style.cursor);
-        */
+        this.runtime.pushEvent("cursor_data", cd);
       } else if (msg?.cursor_id) {
-        globals.pushEvent("cursor_id", { id: msg?.cursor_id });
+        this.runtime.pushEvent("cursor_id", { id: msg?.cursor_id });
       } else if (msg?.cursor_position) {
-        globals.pushEvent("cursor_position", msg?.cursor_position);
+        this.runtime.pushEvent("cursor_position", msg?.cursor_position);
       } else if (msg?.misc) {
         if (!this.handleMisc(msg?.misc)) break;
       } else if (msg?.audio_frame) {
-        globals.playAudio(msg?.audio_frame.data);
+        this.runtime.playAudio(msg?.audio_frame.data);
       }
     }
   }
 
   msgbox(type_: string, title: string, text: string) {
-    if (globals.getConn() === this) this._msgbox?.(type_, title, text);
+    if (this.runtime.isCurrent(this)) this._msgbox?.(type_, title, text);
   }
 
   draw(frame: any) {
     this._draw?.(frame);
-    globals.draw(frame);
   }
 
   close() {
     this._startGeneration++;
+    this._videoGeneration++;
+    this._videoLoad?.abort();
+    this._videoLoad = undefined;
     this._managedSessionCheck?.abort();
     this._managedSessionCheck = undefined;
     this._managedToken = undefined;
@@ -508,6 +506,7 @@ export default class Connection {
     this._ws?.close();
     this._ws = undefined;
     this._videoDecoder?.close();
+    this._videoDecoder = undefined;
   }
 
   refresh() {
@@ -524,7 +523,7 @@ export default class Connection {
   }
 
   login(password: string | undefined = undefined) {
-    if (sharedLaunch) return;
+    if (this._sharedTarget) return;
     if (this._managedTarget) {
       const cached = this.getOption("password");
       this._managedPasswordAttempt = !password && this._password?.toString() === cached ? cached : undefined;
@@ -554,7 +553,7 @@ export default class Connection {
   }
 
   _sendLoginMessage(password: Uint8Array | undefined = undefined) {
-    if (this._managedTarget && (!this._managedToken || readManagedLaunchToken() !== this._managedToken)) {
+    if (this._managedTarget && (!this._managedToken || this.runtime.readManagedToken() !== this._managedToken)) {
       this.close();
       this.msgbox("error", "Login Error", managedSessionChanged.message);
       return;
@@ -614,28 +613,18 @@ export default class Connection {
     }
     if (vf.vp9s) {
       const dec = this._videoDecoder;
-      var tm = new Date().getTime();
-      var i = 0;
+      if (!dec) { this.sendVideoReceived(); return; }
+      const socket = this._ws;
+      const generation = this._videoGeneration;
+      let i = 0;
       const n = vf.vp9s?.frames.length;
       vf.vp9s.frames.forEach((f) => {
         dec.processFrame(f.data.slice(0).buffer, (ok: any) => {
+          if (generation !== this._videoGeneration || this._ws !== socket) return;
           i++;
           if (i == n) this.sendVideoReceived();
           if (ok && dec.frameBuffer && n == i) {
             this.draw(dec.frameBuffer);
-            const now = new Date().getTime();
-            var elapsed = now - tm;
-            this._videoTestSpeed[1] += elapsed;
-            this._videoTestSpeed[0] += 1;
-            if (this._videoTestSpeed[0] >= 30) {
-              console.log(
-                "video decoder: " +
-                  parseInt(
-                    "" + this._videoTestSpeed[1] / this._videoTestSpeed[0]
-                  )
-              );
-              this._videoTestSpeed = [0, 0];
-            }
           }
         });
       });
@@ -649,7 +638,7 @@ export default class Connection {
       return;
     }
     this.msgbox("success", "Successful", "Connected, waiting for image...");
-    globals.pushEvent("peer_info", pi);
+    this.runtime.pushEvent("peer_info", pi);
     const p = this.shouldAutoLogin();
     if (p) this.inputOsPassword(p);
     const username = this.getOption("info")?.username;
@@ -660,12 +649,12 @@ export default class Connection {
         const p = this._password.toString();
         if (p != this.getOption("password")) {
           this.setOption("password", p);
-          if (this._managedTarget) saveManagedPassword(this._managedTarget, p);
-          console.log("remember password of " + this._id);
+          if (this._managedTarget) this.runtime.saveManagedPassword(this._managedTarget, p);
+
         }
       }
     } else {
-      if (this._managedTarget) saveManagedPassword(this._managedTarget, undefined, this.getOption("password"));
+      if (this._managedTarget) this.runtime.saveManagedPassword(this._managedTarget, undefined, this.getOption("password"));
       this.setOption("password", undefined);
     }
   }
@@ -682,15 +671,15 @@ export default class Connection {
 
   handleMisc(misc: message.Misc) {
     if (misc.audio_format) {
-      globals.initAudio(
+      this.runtime.initAudio(
         misc.audio_format.channels,
         misc.audio_format.sample_rate
       );
     } else if (misc.chat_message) {
-      globals.pushEvent("chat", { text: misc.chat_message.text });
+      this.runtime.pushEvent("chat", { text: misc.chat_message.text });
     } else if (misc.permission_info) {
       const p = misc.permission_info;
-      console.info("Change permission " + p.permission + " -> " + p.enabled);
+
       let name;
       switch (p.permission) {
         case message.PermissionInfo_Permission.Keyboard:
@@ -703,12 +692,12 @@ export default class Connection {
           name = "audio";
           break;
         default:
-          return;
+          return true;
       }
-      globals.pushEvent("permission", { [name]: p.enabled });
+      this.runtime.pushEvent("permission", { [name]: p.enabled });
     } else if (misc.switch_display) {
-      this.loadVideoDecoder();
-      globals.pushEvent("switch_display", misc.switch_display);
+      void this.loadVideoDecoder().catch((error) => this.msgbox("error", "Video Error", String(error)));
+      this.runtime.pushEvent("switch_display", misc.switch_display);
     } else if (misc.close_reason) {
       this.msgbox("error", "Connection Error", misc.close_reason);
       this.close();
@@ -736,10 +725,10 @@ export default class Connection {
       this._options[name] = value;
     }
     this._options["tm"] = new Date().getTime();
-    if (managedLaunch || this._sharedTarget || this._ordinaryAccountToken !== sessionStorage.getItem("access_token") ||
-        this._ordinaryNetwork?.server !== getWebClientNetworkOption("custom-rendezvous-server") ||
-        this._ordinaryNetwork?.key !== getWebClientNetworkOption("key")) return;
-    const peers = globals.getPeers();
+    if (this._managedTarget || this._sharedTarget || this._ordinaryAccountToken !== sessionStorage.getItem("access_token") ||
+        this._ordinaryNetwork?.server !== this.runtime.getNetworkOption("custom-rendezvous-server") ||
+        this._ordinaryNetwork?.key !== this.runtime.getNetworkOption("key")) return;
+    const peers = this.runtime.getPeers();
     peers[this._id] = this._options;
     sessionStorage.setItem("peers", JSON.stringify(peers));
   }
@@ -753,7 +742,7 @@ export default class Connection {
     shift: Boolean,
     command: Boolean
   ) {
-    const key_event = mapKey(name, globals.isDesktop());
+    const key_event = mapKey(name, this.runtime.isDesktop());
     if (!key_event) return;
     if (alt && (name == "VK_MENU" || name == "RAlt")) {
       alt = false;
@@ -907,35 +896,24 @@ export default class Connection {
     this._ws?.sendMessage({ misc });
   }
 
-  loadVideoDecoder() {
+  async loadVideoDecoder() {
+    const generation = ++this._videoGeneration;
+    this._videoLoad?.abort();
+    const pending = new AbortController();
+    this._videoLoad = pending;
     this._videoDecoder?.close();
-    loadVp9((decoder: any) => {
+    this._videoDecoder = undefined;
+    try {
+      const decoder = await loadVp9(undefined, pending.signal);
+      if (generation !== this._videoGeneration) { decoder.close(); return; }
       this._videoDecoder = decoder;
-      console.log("vp9 loaded");
-      console.log(decoder);
-    });
+    } catch (error) {
+      if (generation === this._videoGeneration) throw error;
+    } finally {
+      if (this._videoLoad === pending) this._videoLoad = undefined;
+    }
   }
-}
 
-function testDelay() {
-  var nearest = "";
-  HOSTS.forEach((host) => {
-    const now = new Date().getTime();
-    new Websock(getWebClientUri(host, false), true).open().then(() => {
-      console.log("latency of " + host + ": " + (new Date().getTime() - now));
-      if (!nearest) {
-        HOST = host;
-        localStorage.setItem("rendezvous-server", host);
-      }
-    });
-  });
-}
-
-if (!managedLaunch && !sharedLaunch) testDelay();
-
-function getDefaultUri(isRelay = false): string {
-  const host = getWebClientNetworkOption("custom-rendezvous-server") || HOST;
-  return getWebClientUri(host, isRelay);
 }
 
 function getPublishedRelayTarget(uri: URL, target = window.capylinkWebClientRelayTarget): RelayTarget | undefined {
@@ -962,7 +940,7 @@ function webSocketPort(uri: URL): number {
   return Number(uri.port || (uri.protocol === "wss:" ? 443 : 80));
 }
 
-function getWebClientRelayUri(target: RelayTarget | undefined, relayServer: string): string {
+function getWebClientRelayUri(target: RelayTarget | undefined, relayServer: string, defaultServer: string): string {
   if (websocketScheme.test(relayServer)) {
     try {
       return getWebClientUri(relayServer, true, true);
@@ -978,7 +956,7 @@ function getWebClientRelayUri(target: RelayTarget | undefined, relayServer: stri
     }
   }
   if (!relayServer) {
-    if (!target) return getDefaultUri(true);
+    if (!target) return getWebClientUri(defaultServer, true);
     return target.relay ? getWebClientUri(target.relay, true, true) : getWebClientUri(target.server, true);
   }
   const advertisedUri = getWebClientUri(relayServer, true, true);

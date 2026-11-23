@@ -1,6 +1,6 @@
 import * as message from "./message.js";
 import * as rendezvous from "./rendezvous.js";
-import * as globals from "./globals";
+import { decrypt, encrypt } from "./crypto";
 
 type Keys = "message" | "open" | "close" | "error";
 
@@ -46,7 +46,7 @@ export default class Websock {
     let k = this._secretKey;
     if (k) {
       k[1] += 1;
-      data = globals.encrypt(data, k[1], k[0]);
+      data = encrypt(data, k[1], k[0]);
     }
     this._websocket.send(data);
   }
@@ -78,30 +78,21 @@ export default class Websock {
 
   async open(timeout: number = 12000): Promise<Websock> {
     return new Promise((resolve, reject) => {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (this._status != "open") {
           reject(this._status || "Timeout");
         }
       }, timeout);
       this._websocket.onopen = () => {
+        clearTimeout(timer);
         this._latency = new Date().getTime() - this._latency;
         this._status = "open";
-        console.debug(">> WebSock.onopen");
-        if (this._websocket?.protocol) {
-          console.info(
-            "Server choose sub-protocol: " + this._websocket.protocol
-          );
-        }
-
         this._eventHandlers.open();
-        console.info("WebSock.onopen");
         resolve(this);
       };
       this._websocket.onclose = (e) => {
-        if (this._status == "open") {
-          // e.code 1000 means that the connection was closed normally.
-          //
-        }
+        clearTimeout(timer);
+        if (this._status === "closed") { reject("Closed"); return; }
         this._status = e;
         console.error("WebSock.onclose: ");
         console.error(e);
@@ -109,6 +100,8 @@ export default class Websock {
         reject("Reset by the peer");
       };
       this._websocket.onerror = (e: any) => {
+        clearTimeout(timer);
+        if (this._status === "closed") return;
         if (!this._status) {
           reject("Failed to connect to " + (this._isRendezvous ? "rendezvous" : "relay") + " server");
           return;
@@ -150,13 +143,12 @@ export default class Websock {
   }
 
   close() {
-    this._status = "";
+    this._status = "closed";
     if (this._websocket) {
       if (
         this._websocket.readyState === WebSocket.OPEN ||
         this._websocket.readyState === WebSocket.CONNECTING
       ) {
-        console.info("Closing WebSocket connection");
         this._websocket.close();
       }
 
@@ -170,7 +162,7 @@ export default class Websock {
       const k = this._secretKey;
       if (k) {
         k[2] += 1;
-        bytes = globals.decrypt(bytes, k[2], k[0]);
+        bytes = decrypt(bytes, k[2], k[0]);
       }
       this._buf.push(
         this._isRendezvous

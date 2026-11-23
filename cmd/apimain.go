@@ -11,6 +11,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http"
 	"github.com/lejianwen/rustdesk-api/v2/lib/cache"
+	"github.com/lejianwen/rustdesk-api/v2/lib/ipregion"
 	"github.com/lejianwen/rustdesk-api/v2/lib/jwt"
 	"github.com/lejianwen/rustdesk-api/v2/lib/lock"
 	"github.com/lejianwen/rustdesk-api/v2/lib/logger"
@@ -23,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const DatabaseVersion = 272
+const DatabaseVersion = 273
 
 // @title 管理系统API
 // @version 1.0
@@ -104,6 +105,7 @@ func init() {
 	rootCmd.AddCommand(resetPwdCmd, resetUserPwdCmd)
 }
 func main() {
+	defer ipregion.Close()
 	if err := rootCmd.Execute(); err != nil {
 		global.Logger.Error(err)
 		os.Exit(1)
@@ -113,6 +115,9 @@ func main() {
 func InitGlobal() {
 	//配置解析
 	global.Viper = config.Init(&global.Config, global.ConfigPath)
+	if err := ipregion.Init(global.Config.Gin.ResourcesPath); err != nil {
+		panic(err)
+	}
 
 	//日志
 	global.Logger = logger.New(&logger.Config{
@@ -210,12 +215,12 @@ func InitGlobal() {
 		BanDuration:      30 * time.Minute,
 	})
 	global.LoginLimiter.RegisterProvider(utils.B64StringCaptchaProvider{})
-	DatabaseAutoUpdate()
+	InitDatabase()
 }
 
-func DatabaseAutoUpdate() {
-	version := DatabaseVersion
-
+// InitDatabase only creates the schema for a fresh installation.
+// Existing deployments must apply schema changes manually before startup.
+func InitDatabase() {
 	db := global.DB
 
 	if global.Config.Gorm.Type == config.TypeMysql {
@@ -255,27 +260,17 @@ func DatabaseAutoUpdate() {
 		}
 	}
 
-	if !db.Migrator().HasTable(&model.Version{}) {
-		if err := Migrate(uint(version)); err != nil {
-			global.Logger.Fatalf("database migration failed: %v", err)
-		}
-	} else {
-		//查找最后一个version
-		var v model.Version
-		db.Last(&v)
-		if v.Version < uint(version) {
-			if err := Migrate(uint(version)); err != nil {
-				global.Logger.Fatalf("database migration failed: %v", err)
-			}
-		}
-
+	if db.Migrator().HasTable(&model.Version{}) {
+		return
 	}
-
+	if err := CreateDatabaseSchema(); err != nil {
+		global.Logger.Fatalf("database initialization failed: %v", err)
+	}
 }
-func Migrate(version uint) error {
-	global.Logger.Info("Migrating....", version)
+
+func CreateDatabaseSchema() error {
+	global.Logger.Info("Initializing database schema")
 	if err := global.DB.AutoMigrate(
-		&model.Version{},
 		&model.User{},
 		&model.UserToken{},
 		&model.Tag{},
@@ -289,7 +284,6 @@ func Migrate(version uint) error {
 		&model.AuditFile{},
 		&model.AddressBookCollection{},
 		&model.ServerCmd{},
-		&model.DeviceGroup{},
 	); err != nil {
 		return err
 	}
@@ -336,31 +330,43 @@ func Migrate(version uint) error {
 			return err
 		}
 	}
-	if err := global.DB.Create(&model.Version{Version: version}).Error; err != nil {
+	locationDB := global.DB
+	const locationComment = "'服务命令中观测到的IP及其最近归属地'"
+	if dialect == "mysql" {
+		locationDB = locationDB.Set("gorm:table_options", " COMMENT = "+locationComment)
+	}
+	if err := locationDB.AutoMigrate(&model.IPLocation{}); err != nil {
+		return err
+	}
+	if dialect == "postgres" {
+		if err := locationDB.Exec("COMMENT ON TABLE ip_locations IS " + locationComment).Error; err != nil {
+			return err
+		}
+	}
+	if err := global.DB.AutoMigrate(&model.Version{}); err != nil {
+		return err
+	}
+	if err := global.DB.Create(&model.Version{Version: DatabaseVersion}).Error; err != nil {
 		return err
 	}
 	//首次安装只创建默认分组，首个管理员由邮箱注册流程创建。
-	var vc int64
-	global.DB.Model(&model.Version{}).Count(&vc)
-	if vc == 1 {
-		localizer := global.Localizer("")
-		defaultGroup, _ := localizer.LocalizeMessage(&i18n.Message{
-			ID: "DefaultGroup",
-		})
-		group := &model.Group{
-			Name: defaultGroup,
-			Type: model.GroupTypeDefault,
-		}
-		service.AllService.GroupService.Create(group)
-
-		shareGroup, _ := localizer.LocalizeMessage(&i18n.Message{
-			ID: "ShareGroup",
-		})
-		groupShare := &model.Group{
-			Name: shareGroup,
-			Type: model.GroupTypeShare,
-		}
-		service.AllService.GroupService.Create(groupShare)
+	localizer := global.Localizer("")
+	defaultGroup, _ := localizer.LocalizeMessage(&i18n.Message{
+		ID: "DefaultGroup",
+	})
+	group := &model.Group{
+		Name: defaultGroup,
+		Type: model.GroupTypeDefault,
 	}
+	service.AllService.GroupService.Create(group)
+
+	shareGroup, _ := localizer.LocalizeMessage(&i18n.Message{
+		ID: "ShareGroup",
+	})
+	groupShare := &model.Group{
+		Name: shareGroup,
+		Type: model.GroupTypeShare,
+	}
+	service.AllService.GroupService.Create(groupShare)
 	return nil
 }

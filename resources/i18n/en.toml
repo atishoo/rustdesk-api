@@ -24,9 +24,9 @@ one = "Item already exists."
 other = "Item already exists."
 
 [InvalidAddressBookTags]
-description = "Address book tags must belong to the target collection"
-one = "Select existing tags from the target address book collection."
-other = "Select existing tags from the target address book collection."
+description = "Address book tags must belong to the owning account"
+one = "Select existing tags from the owning account."
+other = "Select existing tags from the owning account."
 
 [ReferencedTagMove]
 description = "A tag in use cannot be moved"

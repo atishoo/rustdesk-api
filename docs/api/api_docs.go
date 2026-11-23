@@ -719,66 +719,6 @@ const docTemplateapi = `{
                 }
             }
         },
-        "/device-group/accessible": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "机器",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "群组"
-                ],
-                "summary": "设备",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "每页数量",
-                        "name": "pageSize",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "状态",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "accessible",
-                        "name": "accessible",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.DataResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/heartbeat": {
             "post": {
                 "description": "心跳",
@@ -1060,7 +1000,7 @@ const docTemplateapi = `{
                         "token": []
                     }
                 ],
-                "description": "服务配置,给webclient提供api-server",
+                "description": "返回账号服务配置及浏览器信令入口 ws_host；保留原始 id_server，ws_host 为空时浏览器沿用 id_server。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1123,7 +1063,7 @@ const docTemplateapi = `{
         },
         "/shared-peer": {
             "post": {
-                "description": "分享的peer",
+                "description": "兑换固定分享设备及临时密码，并返回浏览器信令入口 ws_host；保留原始 id_server，ws_host 为空时浏览器沿用 id_server。",
                 "consumes": [
                     "application/json"
                 ],

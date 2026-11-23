@@ -39,7 +39,7 @@ func (ct *Peer) List(c *gin.Context) {
 		return
 	}
 	u := service.AllService.UserService.CurUser(c)
-	res := service.AllService.PeerService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
+	res, err := service.AllService.PeerService.ListWithAmbiguity(query.Page, query.PageSize, func(tx *gorm.DB) {
 		tx.Where("user_id = ?", u.Id)
 		if query.TimeAgo > 0 {
 			lt := time.Now().Unix() - int64(query.TimeAgo)
@@ -59,6 +59,10 @@ func (ct *Peer) List(c *gin.Context) {
 			tx.Where("uuid in (?)", query.Uuids)
 		}
 	})
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		return
+	}
 	response.Success(c, res)
 }
 

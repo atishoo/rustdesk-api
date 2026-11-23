@@ -577,11 +577,19 @@ func (a *Ab) PeerUpdate(c *gin.Context) {
 		return
 	}
 	//允许的字段
-	allowUp := []string{"password", "hash", "tags", "alias"}
+	allowUp := []string{"password", "hash", "tags", "alias", "username", "hostname", "platform"}
 	//f中的字段如果不在allowUp中，就删除
 	for k := range f {
 		if !utils.InArray(k, allowUp) {
 			delete(f, k)
+		}
+	}
+	for _, key := range []string{"username", "hostname", "platform"} {
+		if value, exists := f[key]; exists {
+			if _, ok := value.(string); !ok {
+				response.Error(c, response.TranslateMsg(c, "ParamsError"))
+				return
+			}
 		}
 	}
 	//fmt.Println(f)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/lejianwen/rustdesk-api/v2/lib/ipregion"
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -73,7 +74,7 @@ func lockDeviceIdentity(tx *gorm.DB, deviceID, uuid model.DeviceIdentity) error 
 func (ps *PeerService) RecordHeartbeat(deviceId, uuid model.DeviceIdentity, ip string, now int64) {
 	DB.Model(&model.Peer{}).
 		Where("id = ? AND uuid = ? AND last_online_time <= ?", deviceId, uuid, now-30).
-		Updates(map[string]any{"last_online_time": now, "last_online_ip": ip})
+		Updates(map[string]any{"last_online_time": now, "last_online_ip": ip, "last_online_ip_location": ipregion.Lookup(ip)})
 }
 
 // EraseUserId 清除用户id, 用于用户删除
@@ -81,7 +82,7 @@ func (ps *PeerService) EraseUserId(userId uint) error {
 	return DB.Model(&model.Peer{}).Where("user_id = ?", userId).Update("user_id", 0).Error
 }
 
-// Prefer identities associated by authenticated login or an explicit admin registration.
+// Prefer identities associated by authenticated device login.
 // Preserve discovery of reported identities until the ID has any confirmed candidate.
 func preferredPeerIdentity(table string) string {
 	return fmt.Sprintf(`(%s.identity_confirmed = TRUE OR NOT EXISTS (
@@ -106,7 +107,7 @@ func (ps *PeerService) ListGroupPeers(userIds []uint, page, pageSize uint) ([]*m
 		return nil, 0, err
 	}
 	var peers []*model.Peer
-	err := visible.Select("peers.id, peers.user_id, peers.group_id, peers.hostname, peers.os, peers.username").
+	err := visible.Select("peers.id, peers.user_id, peers.hostname, peers.os, peers.username").
 		Order("peers.row_id").Scopes(Paginate(page, pageSize)).Find(&peers).Error
 	return peers, total, err
 }
@@ -121,32 +122,37 @@ func (ps *PeerService) SimpleData(ids []string) *model.PeerList {
 }
 
 func (ps *PeerService) List(page, pageSize uint, where func(tx *gorm.DB)) *model.PeerList {
-	return ps.list(page, pageSize, where, false)
+	res, _ := ps.list(page, pageSize, where, false)
+	return res
 }
 
-func (ps *PeerService) ListWithAmbiguity(page, pageSize uint, where func(tx *gorm.DB)) *model.PeerList {
+func (ps *PeerService) ListWithAmbiguity(page, pageSize uint, where func(tx *gorm.DB)) (*model.PeerList, error) {
 	return ps.list(page, pageSize, where, true)
 }
 
-func (ps *PeerService) list(page, pageSize uint, where func(tx *gorm.DB), includeAmbiguity bool) (res *model.PeerList) {
-	res = &model.PeerList{}
+func (ps *PeerService) list(page, pageSize uint, where func(tx *gorm.DB), includeAmbiguity bool) (*model.PeerList, error) {
+	res := &model.PeerList{}
 	res.Page = int64(page)
 	res.PageSize = int64(pageSize)
 	tx := DB.Model(&model.Peer{})
 	if where != nil {
 		where(tx)
 	}
-	tx.Count(&res.Total)
+	if err := tx.Count(&res.Total).Error; err != nil {
+		return res, err
+	}
 	if includeAmbiguity {
 		tx.Select("peers.*, (NOT "+preferredPeerIdentity("peers")+" OR "+peerIDAmbiguous+") AS ambiguous_id", currentDeviceID)
 	}
-	tx.Order("peers.row_id").Scopes(Paginate(page, pageSize)).Find(&res.Peers)
+	if err := tx.Order("peers.row_id").Scopes(Paginate(page, pageSize)).Find(&res.Peers).Error; err != nil {
+		return res, err
+	}
 	if includeAmbiguity {
 		for _, peer := range res.Peers {
 			peer.DirectTarget = isDirectAddressBookTarget(string(peer.Id))
 		}
 	}
-	return
+	return res, nil
 }
 
 // ListFilterByUserId 根据用户id过滤Peer列表
@@ -159,30 +165,6 @@ func (ps *PeerService) ListFilterByUserId(page, pageSize uint, where func(tx *go
 		}
 	}
 	return ps.List(page, pageSize, userWhere)
-}
-
-// Create 创建
-func (ps *PeerService) Create(u *model.Peer, fields ...string) error {
-	u.IdentityConfirmed = true
-	err := withDeviceGroup(u.GroupId, func(tx *gorm.DB) error {
-		return tx.Create(u).Error
-	})
-	if err != nil {
-		if translator, ok := DB.Dialector.(gorm.ErrorTranslator); ok && errors.Is(translator.Translate(err), gorm.ErrDuplicatedKey) {
-			// Confirm outside the failed insert's transaction. Keep the data
-			// already on the device for every field omitted by the administrator.
-			return withDeviceGroup(u.GroupId, func(tx *gorm.DB) error {
-				confirmed := tx.Model(&model.Peer{}).
-					Where("id = ? AND uuid = ? AND identity_confirmed = FALSE", u.Id, u.Uuid).
-					Select(append(fields, "identity_confirmed")).UpdateColumns(u)
-				if confirmed.Error != nil || confirmed.RowsAffected > 0 {
-					return confirmed.Error
-				}
-				return gorm.ErrDuplicatedKey
-			})
-		}
-	}
-	return err
 }
 
 // ReportSystemInfo updates the hardware fields for an exact device identity.
@@ -255,55 +237,9 @@ func (ps *PeerService) BatchDelete(ids []uint) error {
 	})
 }
 
-// Update 更新
-func (ps *PeerService) Update(u *model.Peer, fields ...string) error {
-	updateID := slices.Contains(fields, "id")
-	updateUUID := slices.Contains(fields, "uuid")
-	update := func(tx *gorm.DB) error {
-		if updateID || updateUUID {
-			if tx.Dialector.Name() == "sqlite" {
-				if err := tx.Model(&model.Peer{}).Where("row_id = ?", u.RowId).
-					UpdateColumn("user_id", gorm.Expr("user_id")).Error; err != nil {
-					return err
-				}
-			}
-			var current model.Peer
-			if err := tx.Select("id", "uuid").Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).First(&current, u.RowId).Error; err != nil {
-				return err
-			}
-			identityChanged := (updateID && current.Id != u.Id) || (updateUUID && current.Uuid != u.Uuid)
-			if identityChanged {
-				if !updateID {
-					u.Id = current.Id
-				}
-				if !updateUUID {
-					u.Uuid = current.Uuid
-				}
-				u.IdentityConfirmed = u.HasIdentity()
-				u.UserId = 0
-				fields = append(fields, "identity_confirmed", "user_id")
-			}
-			if err := tx.Model(u).Select(fields).Updates(u).Error; err != nil {
-				return err
-			}
-			if identityChanged {
-				return deletePeerTokens(tx, current)
-			}
-			return nil
-		}
-		tx = tx.Model(u)
-		if len(fields) != 0 {
-			tx = tx.Select(fields)
-		}
-		return tx.Updates(u).Error
-	}
-	if (len(fields) == 0 || slices.Contains(fields, "group_id")) && u.GroupId != nil && *u.GroupId != 0 {
-		return withDeviceGroup(u.GroupId, update)
-	}
-	if updateID || updateUUID {
-		return DB.Transaction(update)
-	}
-	return update(DB)
+// Update updates only the device alias maintained by the console.
+func (ps *PeerService) Update(u *model.Peer) error {
+	return DB.Model(u).Select("alias").Updates(u).Error
 }
 
 // BatchUpdateTags replaces the account tags for a set of devices.

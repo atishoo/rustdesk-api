@@ -50,7 +50,6 @@ func Init(g *gin.Engine) {
 	MyBind(adg)
 
 	CapylinkCmdBind(adg)
-	DeviceGroupBind(adg)
 	//访问静态文件
 	//g.StaticFS("/upload", http.Dir(global.Config.Gin.ResourcesPath+"/upload"))
 }
@@ -97,18 +96,6 @@ func UserBind(rg *gin.RouterGroup) {
 	}
 }
 
-func DeviceGroupBind(rg *gin.RouterGroup) {
-	aR := rg.Group("/device_group").Use(middleware.AdminPrivilege())
-	{
-		cont := &admin.DeviceGroup{}
-		aR.GET("/list", cont.List)
-		aR.GET("/detail/:id", cont.Detail)
-		aR.POST("/create", cont.Create)
-		aR.POST("/update", cont.Update)
-		aR.POST("/delete", cont.Delete)
-	}
-}
-
 func TagBind(rg *gin.RouterGroup) {
 	aR := rg.Group("/tag").Use(middleware.AdminPrivilege())
 	{
@@ -122,22 +109,15 @@ func TagBind(rg *gin.RouterGroup) {
 }
 
 func AddressBookBind(rg *gin.RouterGroup) {
-	aR := rg.Group("/address_book")
+	aR := rg.Group("/address_book").Use(middleware.AdminPrivilege())
 	{
 		cont := &admin.AddressBook{}
-		aR.POST("/shareByWebClient", cont.ShareByWebClient)
-
-		arp := aR.Use(middleware.AdminPrivilege())
-		arp.GET("/list", cont.List)
-		//arp.GET("/detail/:id", cont.Detail)
-		arp.POST("/create", cont.Create)
-		arp.POST("/update", cont.Update)
-		arp.POST("/delete", cont.Delete)
-		arp.POST("/batchCreate", cont.BatchCreate)
-		arp.POST("/batchCreateFromPeers", cont.BatchCreateFromPeers)
-
+		aR.GET("/list", cont.List)
+		aR.POST("/delete", cont.Delete)
+		aR.POST("/batchCreateFromPeers", cont.BatchCreateFromPeers)
 	}
 }
+
 func PeerBind(rg *gin.RouterGroup) {
 	aR := rg.Group("/peer")
 	aR.POST("/simpleData", (&admin.Peer{}).SimpleData)
@@ -146,7 +126,6 @@ func PeerBind(rg *gin.RouterGroup) {
 		cont := &admin.Peer{}
 		aR.GET("/list", cont.List)
 		aR.GET("/detail/:id", cont.Detail)
-		aR.POST("/create", cont.Create)
 		aR.POST("/update", cont.Update)
 		aR.POST("/delete", cont.Delete)
 		aR.POST("/batchDelete", cont.BatchDelete)
