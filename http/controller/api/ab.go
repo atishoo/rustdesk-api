@@ -332,9 +332,10 @@ func (a *Ab) Personal(c *gin.Context) {
 		guid := a.ComposeGuid(user.GroupId, user.Id, 0)
 		//如果返回了guid，后面的请求会有变化
 		c.JSON(http.StatusOK, gin.H{
-			"guid": guid,
-			"name": user.Username,
-			"rule": 3,
+			"guid":  guid,
+			"name":  user.Nickname,
+			"owner": user.Email,
+			"rule":  3,
 		})
 	} else {
 		c.JSON(http.StatusOK, nil)

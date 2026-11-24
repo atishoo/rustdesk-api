@@ -1,5 +1,7 @@
 # capylink API
 
+Local accounts use email as the only password-login identifier. Profiles support nickname editing and avatar uploads. Avatars are stored in the API `data/avatars` directory, which must be persisted with API data. LDAP password login also searches by email. External OAuth auto-registration requires a valid email; display names or email prefixes provide the initial nickname.
+
 This project implements the capylink API using Go, and includes both a web UI and web client. capylink is a remote
 desktop software that provides self-hosted solutions.
 

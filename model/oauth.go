@@ -115,13 +115,16 @@ type OauthUser struct {
 	Picture       string `json:"picture,omitempty"`
 }
 
-func (ou *OauthUser) ToUser(user *User, overideUsername bool) {
-	if overideUsername {
-		user.Username = ou.Username
+func (ou *OauthUser) ToUser(user *User) {
+	user.Email = strings.ToLower(strings.TrimSpace(ou.Email))
+	user.Nickname = strings.TrimSpace(ou.Name)
+	if user.Nickname == "" {
+		user.Nickname = strings.TrimSpace(ou.Username)
 	}
-	user.Email = ou.Email
-	user.Nickname = ou.Name
-	user.Avatar = ou.Picture
+	if user.Nickname == "" {
+		user.Nickname = strings.SplitN(user.Email, "@", 2)[0]
+	}
+	user.Nickname = string([]rune(user.Nickname)[:min(len([]rune(user.Nickname)), 32)])
 }
 
 type OauthUserBase struct {
@@ -138,12 +141,10 @@ type OidcUser struct {
 }
 
 func (ou *OidcUser) ToOauthUser() *OauthUser {
-	var username string
-	// 使用 PreferredUsername，如果不存在，降级到 Email 前缀
-	if ou.PreferredUsername != "" {
-		username = ou.PreferredUsername
-	} else {
-		username = strings.ToLower(ou.Email)
+	username := strings.TrimSpace(ou.PreferredUsername)
+	if username == "" {
+		email := strings.ToLower(strings.TrimSpace(ou.Email))
+		username = strings.SplitN(email, "@", 2)[0]
 	}
 
 	return &OauthUser{

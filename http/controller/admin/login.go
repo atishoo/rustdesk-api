@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
@@ -45,6 +46,7 @@ func (ct *Login) Login(c *gin.Context) {
 		return
 	}
 
+	f.Email = strings.ToLower(strings.TrimSpace(f.Email))
 	errList := global.Validator.ValidStruct(c, f)
 	if len(errList) > 0 {
 		loginLimiter.RecordFailedAttempt(clientIp)
@@ -61,15 +63,15 @@ func (ct *Login) Login(c *gin.Context) {
 		}
 	}
 
-	u := service.AllService.UserService.InfoByUsernamePassword(f.Username, f.Password)
+	u := service.AllService.UserService.InfoByEmailPassword(f.Email, f.Password)
 
 	if u.Id == 0 {
-		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "UsernameOrPasswordError", c.RemoteIP(), clientIp))
+		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "EmailOrPasswordError", c.RemoteIP(), clientIp))
 		loginLimiter.RecordFailedAttempt(clientIp)
 		if _, needCaptcha = loginLimiter.CheckSecurityStatus(clientIp); needCaptcha {
-			response.Fail(c, 110, response.TranslateMsg(c, "UsernameOrPasswordError"))
+			response.Fail(c, 110, response.TranslateMsg(c, "EmailOrPasswordError"))
 		} else {
-			response.Fail(c, 101, response.TranslateMsg(c, "UsernameOrPasswordError"))
+			response.Fail(c, 101, response.TranslateMsg(c, "EmailOrPasswordError"))
 		}
 		return
 	}

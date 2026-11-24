@@ -78,10 +78,10 @@ description = "Need login."
 one = "Please log in first."
 other = "Please log in first."
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "Username or password error."
-other = "Username or password error."
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "Email or password error."
+other = "Email or password error."
 
 [SystemError]
 description = "System error."
@@ -255,3 +255,28 @@ other = "Banned."
 description = "Register success, wait admin confirm."
 one = "Register success, wait admin confirm."
 other = "Register success, wait admin confirm."
+
+[OauthEmailUnverified]
+description = "Verified OAuth email is required to link an existing account."
+one = "The OAuth provider must verify the email before linking an existing account."
+other = "The OAuth provider must verify the email before linking an existing account."
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "LDAP-synchronized accounts cannot change their email address."
+other = "LDAP-synchronized accounts cannot change their email address."
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "Nickname must be between 1 and 32 characters."
+other = "Nickname must be between 1 and 32 characters."
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "Avatar upload failed."
+other = "Avatar upload failed."
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "Please select an avatar image."
+other = "Please select an avatar image."

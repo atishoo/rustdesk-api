@@ -5,12 +5,9 @@ import (
 )
 
 type UserForm struct {
-	Id       uint    `json:"id"`
-	Username string  `json:"username" validate:"required,gte=2,lte=32"`
-	Email    *string `json:"email"`
-	//Password string           `json:"password" validate:"required,gte=4,lte=20"`
-	Nickname *string          `json:"nickname"`
-	Avatar   string           `json:"avatar"`
+	Id       uint             `json:"id"`
+	Email    string           `json:"email" validate:"required,email,lte=254"`
+	Nickname string           `json:"nickname" validate:"required,lte=32"`
 	GroupId  uint             `json:"group_id"`
 	IsAdmin  *bool            `json:"is_admin" `
 	Status   model.StatusCode `json:"status" validate:"required,oneof=1 2"`
@@ -19,10 +16,8 @@ type UserForm struct {
 
 func (uf *UserForm) FromUser(user *model.User) *UserForm {
 	uf.Id = user.Id
-	uf.Username = user.Username
-	uf.Nickname = &user.Nickname
-	uf.Email = &user.Email
-	uf.Avatar = user.Avatar
+	uf.Nickname = user.Nickname
+	uf.Email = user.Email
 	uf.GroupId = user.GroupId
 	uf.IsAdmin = user.IsAdmin
 	uf.Status = user.Status
@@ -32,14 +27,8 @@ func (uf *UserForm) FromUser(user *model.User) *UserForm {
 func (uf *UserForm) ToUser() *model.User {
 	user := &model.User{}
 	user.Id = uf.Id
-	user.Username = uf.Username
-	if uf.Nickname != nil {
-		user.Nickname = *uf.Nickname
-	}
-	if uf.Email != nil {
-		user.Email = *uf.Email
-	}
-	user.Avatar = uf.Avatar
+	user.Nickname = uf.Nickname
+	user.Email = uf.Email
 	user.GroupId = uf.GroupId
 	if user.Id == 0 && user.GroupId == 0 {
 		user.GroupId = model.DefaultUserGroupID
@@ -59,7 +48,8 @@ type PageQuery struct {
 
 type UserQuery struct {
 	PageQuery
-	Username string `form:"username"`
+	Email    string `form:"email"`
+	Nickname string `form:"nickname"`
 }
 type UserStatusForm struct {
 	Id     uint             `json:"id" validate:"required"`

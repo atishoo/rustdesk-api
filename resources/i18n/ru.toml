@@ -38,10 +38,10 @@ description = "Need login."
 one = "Пожалуйста, войдите в систему."
 other = "Пожалуйста, войдите в систему."
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "Неправильное имя пользователя или пароль."
-other = "Неправильное имя пользователя или пароль."
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "Неправильный адрес электронной почты или пароль."
+other = "Неправильный адрес электронной почты или пароль."
 
 [SystemError]
 description = "System error."
@@ -162,3 +162,28 @@ other = "Заблокировано."
 description = "Register success wait admin confirm."
 one = "Регистрация прошла успешно, ожидайте подтверждения администратора."
 other = "Регистрация прошла успешно, ожидайте подтверждения администратора."
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "Учетные записи, синхронизированные с LDAP, не могут менять адрес электронной почты."
+other = "Учетные записи, синхронизированные с LDAP, не могут менять адрес электронной почты."
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "Псевдоним должен содержать от 1 до 32 символов."
+other = "Псевдоним должен содержать от 1 до 32 символов."
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "Не удалось загрузить аватар."
+other = "Не удалось загрузить аватар."
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "Выберите изображение аватара."
+other = "Выберите изображение аватара."
+
+[OauthEmailUnverified]
+description = "OauthEmailUnverified"
+one = "Поставщик OAuth должен подтвердить адрес электронной почты перед привязкой существующей учетной записи."
+other = "Поставщик OAuth должен подтвердить адрес электронной почты перед привязкой существующей учетной записи."

@@ -38,10 +38,10 @@ description = "Need login."
 one = "Veuillez d'abord vous connecter."
 other = "Veuillez d'abord vous connecter."
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "Nom d'utilisateur ou de mot de passe incorrect."
-other = "Nom d'utilisateur ou de mot de passe incorrect."
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "Adresse e-mail ou mot de passe incorrect."
+other = "Adresse e-mail ou mot de passe incorrect."
 
 [SystemError]
 description = "System error."
@@ -162,3 +162,28 @@ other = "Banni."
 description = "Register success wait admin confirm."
 one = "Inscription réussie, veuillez attendre la confirmation de l'administrateur."
 other = "Inscription réussie, veuillez attendre la confirmation de l'administrateur."
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "Les comptes synchronisés avec LDAP ne peuvent pas modifier leur adresse e-mail."
+other = "Les comptes synchronisés avec LDAP ne peuvent pas modifier leur adresse e-mail."
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "Le pseudonyme doit comporter entre 1 et 32 caractères."
+other = "Le pseudonyme doit comporter entre 1 et 32 caractères."
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "Échec du téléversement de l’avatar."
+other = "Échec du téléversement de l’avatar."
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "Sélectionnez une image d’avatar."
+other = "Sélectionnez une image d’avatar."
+
+[OauthEmailUnverified]
+description = "OauthEmailUnverified"
+one = "Le fournisseur OAuth doit vérifier l’adresse e-mail avant d’associer un compte existant."
+other = "Le fournisseur OAuth doit vérifier l’adresse e-mail avant d’associer un compte existant."

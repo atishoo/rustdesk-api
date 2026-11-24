@@ -99,7 +99,7 @@
      application. For more information, see:
      https://developers.google.com/web/fundamentals/primers/service-workers -->
 <script>
-    var serviceWorkerVersion = '54e0965260';
+    var serviceWorkerVersion = '29cb39a7b5';
     var scriptLoaded = false;
     var shareLaunch = window.location.hash.startsWith('#/?')
         && new URLSearchParams(window.location.hash.slice(3)).has('share_token');
@@ -113,7 +113,7 @@
             await window.capylinkSharedTargetReady;
         }
         var scriptTag = document.createElement('script');
-        scriptTag.src = 'main.dart.js';
+        scriptTag.src = 'main.dart.js?v=29cb39a7';
         scriptTag.type = 'application/javascript';
         document.body.append(scriptTag);
     }

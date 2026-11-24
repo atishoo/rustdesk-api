@@ -78,10 +78,10 @@ description = "Need login."
 one = "请先登录。"
 other = "请先登录。"
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "用户名或密码错误。"
-other = "用户名或密码错误。"
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "邮箱或密码错误。"
+other = "邮箱或密码错误。"
 
 [SystemError]
 description = "System error."
@@ -257,3 +257,28 @@ other = "已被封禁。"
 description = "Register success, wait for admin confirm."
 one = "注册成功，请等待管理员审核。"
 other = "注册成功，请等待管理员审核。"
+
+[OauthEmailUnverified]
+description = "Verified OAuth email is required to link an existing account."
+one = "第三方平台须验证邮箱后才能关联已有账号。"
+other = "第三方平台须验证邮箱后才能关联已有账号。"
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "LDAP 同步账号无法修改邮箱地址。"
+other = "LDAP 同步账号无法修改邮箱地址。"
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "昵称须为 1 至 32 个字符。"
+other = "昵称须为 1 至 32 个字符。"
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "头像上传失败。"
+other = "头像上传失败。"
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "请选择头像图片。"
+other = "请选择头像图片。"

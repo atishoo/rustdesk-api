@@ -460,15 +460,16 @@ func (os *OauthService) BindOauthUser(userId uint, oauthUser *model.OauthUser, o
 
 // UnBindOauthUser: Unbind third party account
 func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, loginBanned bool) error {
-	var username, directoryUsername string
+	var email, directoryEmail string
 	var directoryValues *model.User
-	var useLocalPassword bool
+	var useLocalPassword, localAdminFallback bool
 	unbind := func(tx *gorm.DB) error {
 		var user model.User
 		// Serialize unbinding even when two requests remove different providers.
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "username", "password", "status").First(&user, userId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "email", "password", "status", "is_admin", "ldap_synced").First(&user, userId).Error; err != nil {
 			return err
 		}
+		localAdminFallback = user.Password != "" && !user.LdapSynced && user.IsAdmin != nil && *user.IsAdmin
 		result := tx.Where("user_id = ? AND op = ?", userId, op).Delete(&model.UserThird{})
 		if result.Error != nil {
 			return result.Error
@@ -476,8 +477,8 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		if user.Username != "" && user.Password != "" && AllService.UserService.CheckUserEnable(&user) {
-			if useLocalPassword && user.Username == username {
+		if user.Email != "" && user.Password != "" && AllService.UserService.CheckUserEnable(&user) {
+			if useLocalPassword && user.Email == email {
 				valid, _, err := utils.VerifyPassword(user.Password, loginPassword)
 				if err == nil && valid {
 					return nil
@@ -499,10 +500,10 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		if remaining > 0 {
 			return nil
 		}
-		if Config.Ldap.Enable && directoryUsername != "" && user.Username == username {
-			// LDAP login maps the returned directory username to the local account.
+		if Config.Ldap.Enable && directoryEmail != "" && user.Email == email {
+			// LDAP login maps the returned directory email to the local account.
 			var mapped model.User
-			err := tx.Select("id", "status").Where("username = ?", directoryUsername).First(&mapped).Error
+			err := tx.Select("id", "status").Where("email = ?", directoryEmail).First(&mapped).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
@@ -525,11 +526,11 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 				return nil
 			}
 		}
-		username = user.Username
+		email = user.Email
 		return ErrLastLoginMethod
 	}
 	err := DB.Transaction(unbind)
-	if !errors.Is(err, ErrLastLoginMethod) || username == "" || !Config.Ldap.Enable {
+	if !errors.Is(err, ErrLastLoginMethod) || email == "" || !Config.Ldap.Enable {
 		return err
 	}
 	if loginPassword == "" {
@@ -540,15 +541,20 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 	}
 	// Query the directory after rollback so a slow directory cannot hold database locks.
 	directory := &LdapService{deadline: time.Now().Add(5 * time.Second)}
-	ldapUser, ldapErr := directory.loginUser(username, loginPassword)
+	ldapUser, ldapErr := directory.loginUser(email, loginPassword)
 	if ldapErr != nil {
-		if !time.Now().Before(directory.deadline) {
+		unavailable := errors.Is(ldapErr, ErrLdapConnectFailed) ||
+			errors.Is(ldapErr, ErrLdapBindService) ||
+			errors.Is(ldapErr, ErrLdapSearchFailed) ||
+			errors.Is(ldapErr, ErrLdapTlsFailed)
+		independentLocalAdmin := errors.Is(ldapErr, ErrLdapUserNotFound) && localAdminFallback
+		if !localAdminFallback || (!unavailable && !independentLocalAdmin) {
 			return ErrLdapUnbindVerificationFailed
 		}
-		// Ordinary login falls back to the local password only before LDAP mapping.
+		// Only an unavailable directory may fall back to the local password.
 		useLocalPassword = true
 	} else {
-		if ldapUser.Username == "" || AllService.UserService.InfoByUsername(ldapUser.Username).Id != userId {
+		if ldapUser.Email == "" || AllService.UserService.InfoByEmail(ldapUser.Email).Id != userId {
 			return ErrLdapUnbindVerificationFailed
 		}
 		if Config.Ldap.User.Sync {
@@ -557,7 +563,7 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 				return ErrLdapUnbindVerificationFailed
 			}
 		}
-		directoryUsername = ldapUser.Username
+		directoryEmail = strings.ToLower(strings.TrimSpace(ldapUser.Email))
 	}
 
 	err = DB.Transaction(unbind)

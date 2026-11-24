@@ -270,8 +270,22 @@ func InitDatabase() {
 
 func CreateDatabaseSchema() error {
 	global.Logger.Info("Initializing database schema")
+	userDB := global.DB
+	if userDB.Dialector.Name() == "mysql" {
+		userDB = userDB.Set("gorm:table_options", " COMMENT = '账号及个人资料'")
+	}
+	if err := userDB.AutoMigrate(&model.User{}); err != nil {
+		return err
+	}
+	if userDB.Dialector.Name() == "postgres" {
+		if err := userDB.Exec("COMMENT ON TABLE users IS '账号及个人资料'").Error; err != nil {
+			return err
+		}
+		if err := userDB.Exec("COMMENT ON COLUMN users.ldap_synced IS '是否由 LDAP 目录映射'").Error; err != nil {
+			return err
+		}
+	}
 	if err := global.DB.AutoMigrate(
-		&model.User{},
 		&model.UserToken{},
 		&model.Tag{},
 		&model.AddressBook{},

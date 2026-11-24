@@ -8,7 +8,6 @@ import (
 
 type LoginPayload struct {
 	Id         uint     `json:"id"`
-	Username   string   `json:"username"`
 	Email      string   `json:"email"`
 	Avatar     string   `json:"avatar"`
 	Token      string   `json:"token"`
@@ -18,7 +17,6 @@ type LoginPayload struct {
 
 func (lp *LoginPayload) FromUser(user *model.User) {
 	lp.Id = user.Id
-	lp.Username = user.Username
 	lp.Email = maskEmail(user.Email)
 	lp.Avatar = user.Avatar
 	lp.Nickname = strings.TrimSpace(user.Nickname)

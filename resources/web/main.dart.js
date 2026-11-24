@@ -25158,7 +25158,7 @@ var $async$aEj=A.I(function(c,d){if(c===1){o=d
 s=p}while(true)switch(s){case 0:k=A.aDY()
 j=$.aC()
 i=t.N
-h=A.ai(["username",a,"password",b,"id",j.af("getByName",["server_id",""]),"uuid",j.af("getByName",["uuid",""])],i,i)
+h=A.ai(["email",a,"password",b,"id",j.af("getByName",["server_id",""]),"uuid",j.af("getByName",["uuid",""])],i,i)
 p=4
 j=A.hI(A.f(k)+"/api/login",0,null)
 i=A.ai(["Content-Type","application/json"],i,i)
@@ -25273,7 +25273,7 @@ A.hV(new A.aEY(s,q,r),!1,!1,null,!0,t.z)},
 b6Y(){var s,r,q,p,o="getByName",n=$.aC(),m=null
 if(n.af(o,["option","access_token"])!==""){s=n.af(o,["option","user_info"])
 if(!J.d(s,""))try{r=B.o.cB(0,s)
-m=J.aW(r,"name")}catch(p){q=A.a9(p)
+m=J.aW(r,"nickname")}catch(p){q=A.a9(p)
 A.e0(A.f(q))}}return m},
 aEN:function aEN(){},
 aEM:function aEM(){},
@@ -89362,7 +89362,7 @@ case 5:case 3:return A.F(null,r)}})
 return A.G($async$$0,r)},
 $S:9}
 A.aEY.prototype={
-$2(a,b){var s,r,q,p=null,o=A.aq(A.ac("Login"),p,p,p,p,p,p,p),n=this.b,m=this.c,l=t.D,k=A.dk(A.a([A.TE(!1,B.bm,!0,p,A.aFf(),n,p,p,p,2,A.qK(p,p,p,p,p,p,p,p,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,!1,p,p,p,A.ac("Username"),p,p,p,p,p,p,p,p,p,p,p,p,p),!0,p,!1,p,!1,p,p,p,B.nd,p,p,1,p,p,!1,"\u2022",p,p,p,p,p,!1,p,p,B.dU,p,p,p,p,p,p,p,B.aT,p,B.eK,p,p,p),new A.wb(m,p)],l),B.x,B.y,B.aq),j=this.a
+$2(a,b){var s,r,q,p=null,o=A.aq(A.ac("Login"),p,p,p,p,p,p,p),n=this.b,m=this.c,l=t.D,k=A.dk(A.a([A.TE(!1,B.bm,!0,p,A.aFf(),n,p,p,p,2,A.qK(p,p,p,p,p,p,p,p,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,!1,p,p,p,A.ac("Email"),p,p,p,p,p,p,p,p,p,p,p,p,p),!0,p,!1,p,!1,p,p,p,B.nd,p,p,1,p,p,!1,"\u2022",p,p,p,p,p,!1,p,p,B.dU,p,p,p,p,p,p,p,B.aT,p,B.eK,p,p,p),new A.wb(m,p)],l),B.x,B.y,B.aq),j=this.a
 if(j.a)s=A.a([A.a56(4,p)],l)
 else{s=j.b
 s=s!==""?A.a([A.aq(A.ac(s),p,p,p,p,A.bG(p,p,B.fU,p,p,p,p,p,p,p,p,p,p,p,p,p,p,!0,p,p,p,p,p,p,p,p),p,p)],l):A.a([],l)}r=$.ll()

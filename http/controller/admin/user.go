@@ -58,6 +58,8 @@ func (ct *User) Create(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
+	f.Email = strings.ToLower(strings.TrimSpace(f.Email))
+	f.Nickname = strings.TrimSpace(f.Nickname)
 	errList := global.Validator.ValidStruct(c, f)
 	if len(errList) > 0 {
 		response.Fail(c, 101, errList[0])
@@ -80,7 +82,8 @@ func (ct *User) Create(c *gin.Context) {
 // @Produce  json
 // @Param page query int false "页码"
 // @Param page_size query int false "页大小"
-// @Param username query int false "账户"
+// @Param email query string false "邮箱"
+// @Param nickname query string false "昵称"
 // @Success 200 {object} response.Response{data=model.UserList}
 // @Failure 500 {object} response.Response
 // @Router /admin/user/list [get]
@@ -92,8 +95,11 @@ func (ct *User) List(c *gin.Context) {
 		return
 	}
 	res := service.AllService.UserService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
-		if query.Username != "" {
-			tx.Where("username like ?", "%"+query.Username+"%")
+		if query.Email != "" {
+			tx.Where("email like ?", "%"+query.Email+"%")
+		}
+		if query.Nickname != "" {
+			tx.Where("nickname like ?", "%"+query.Nickname+"%")
 		}
 	})
 	response.Success(c, res)
@@ -120,20 +126,19 @@ func (ct *User) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
+	f.Email = strings.ToLower(strings.TrimSpace(f.Email))
+	f.Nickname = strings.TrimSpace(f.Nickname)
 	errList := global.Validator.ValidStruct(c, f)
 	if len(errList) > 0 {
 		response.Fail(c, 101, errList[0])
 		return
 	}
 	u := f.ToUser()
-	fields := []string{"username", "status"}
+	fields := []string{"email", "nickname", "status"}
 	if f.IsAdmin != nil {
 		fields = append(fields, "is_admin")
 	}
-	if f.Avatar != "" {
-		fields = append(fields, "avatar")
-	}
-	for field, value := range map[string]*string{"email": f.Email, "nickname": f.Nickname, "remark": f.Remark} {
+	for field, value := range map[string]*string{"remark": f.Remark} {
 		if value != nil {
 			fields = append(fields, field)
 		}

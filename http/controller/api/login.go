@@ -11,6 +11,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"net/http"
+	"strings"
 )
 
 type Login struct {
@@ -41,28 +42,19 @@ func (l *Login) Login(c *gin.Context) {
 		return
 	}
 
+	f.Email = strings.ToLower(strings.TrimSpace(f.Email))
 	errList := global.Validator.ValidStruct(c, f)
-	var u *model.User
-	if len(errList) == 0 {
-		u = service.AllService.UserService.InfoByUsernamePassword(f.Username, f.Password)
-	} else {
-		// LDAP decides which nonempty credentials it accepts. The local fallback
-		// keeps the native form's existing username and password limits.
-		if global.Config.Ldap.Enable && f.Username != "" && f.Password != "" {
-			u, err = service.AllService.LdapService.Authenticate(f.Username, f.Password)
-		}
-		if err != nil || u == nil {
-			loginLimiter.RecordFailedAttempt(clientIp)
-			global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "ParamsError", c.RemoteIP(), c.ClientIP()))
-			response.Error(c, errList[0])
-			return
-		}
+	if len(errList) > 0 {
+		loginLimiter.RecordFailedAttempt(clientIp)
+		response.Error(c, errList[0])
+		return
 	}
+	u := service.AllService.UserService.InfoByEmailPassword(f.Email, f.Password)
 
 	if u.Id == 0 {
 		loginLimiter.RecordFailedAttempt(clientIp)
-		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "UsernameOrPasswordError", c.RemoteIP(), c.ClientIP()))
-		response.Error(c, response.TranslateMsg(c, "UsernameOrPasswordError"))
+		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "EmailOrPasswordError", c.RemoteIP(), c.ClientIP()))
+		response.Error(c, response.TranslateMsg(c, "EmailOrPasswordError"))
 		return
 	}
 

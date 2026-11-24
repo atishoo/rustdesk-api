@@ -1349,7 +1349,8 @@ const docTemplateapi = `{
         "api.LoginForm": {
             "type": "object",
             "required": [
-                "username"
+                "email",
+                "password"
             ],
             "properties": {
                 "autoLogin": {
@@ -1357,6 +1358,10 @@ const docTemplateapi = `{
                 },
                 "deviceInfo": {
                     "$ref": "#/definitions/api.DeviceInfoInLogin"
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 254
                 },
                 "id": {
                     "type": "string"
@@ -1368,11 +1373,6 @@ const docTemplateapi = `{
                 },
                 "type": {
                     "type": "string"
-                },
-                "username": {
-                    "type": "string",
-                    "maxLength": 32,
-                    "minLength": 2
                 },
                 "uuid": {
                     "type": "string"
@@ -1431,6 +1431,9 @@ const docTemplateapi = `{
         "api.UserPayload": {
             "type": "object",
             "properties": {
+                "avatar": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -1441,7 +1444,7 @@ const docTemplateapi = `{
                 "is_admin": {
                     "type": "boolean"
                 },
-                "name": {
+                "nickname": {
                     "type": "string"
                 },
                 "note": {

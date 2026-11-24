@@ -59,6 +59,9 @@ definitions:
         type: boolean
       deviceInfo:
         $ref: '#/definitions/api.DeviceInfoInLogin'
+      email:
+        maxLength: 254
+        type: string
       id:
         type: string
       password:
@@ -67,14 +70,11 @@ definitions:
         type: string
       type:
         type: string
-      username:
-        maxLength: 32
-        minLength: 2
-        type: string
       uuid:
         type: string
     required:
-    - username
+    - email
+    - password
     type: object
   api.LoginRes:
     properties:
@@ -110,6 +110,8 @@ definitions:
     type: object
   api.UserPayload:
     properties:
+      avatar:
+        type: string
       email:
         type: string
       info:
@@ -117,7 +119,7 @@ definitions:
         type: object
       is_admin:
         type: boolean
-      name:
+      nickname:
         type: string
       note:
         type: string

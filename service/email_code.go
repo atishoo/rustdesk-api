@@ -28,8 +28,12 @@ const (
 )
 
 func ValidateEmailAddress(value string) bool {
-	address, err := mail.ParseAddress(strings.TrimSpace(value))
-	return err == nil && strings.EqualFold(address.Address, strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if len([]rune(value)) > 254 {
+		return false
+	}
+	address, err := mail.ParseAddress(value)
+	return err == nil && strings.EqualFold(address.Address, value)
 }
 
 func SendEmailCode(email, purpose string) error {
@@ -49,18 +53,23 @@ func SendEmailCode(email, purpose string) error {
 			return errors.New("RegisterClosed")
 		}
 	}
-	if purpose == EmailCodePurposeRegister && AllService.UserService.InfoByEmail(email).Id > 0 {
-		return errors.New("EmailExists")
-	}
-	if purpose == EmailCodePurposeReset && AllService.UserService.InfoByEmail(email).Id == 0 {
-		return nil
-	}
-
 	var latest model.EmailCode
 	if err := DB.Where("email = ? AND purpose = ?", email, purpose).Order("created_at DESC").First(&latest).Error; err == nil {
 		if time.Since(time.Time(latest.CreatedAt)) < emailCodeInterval {
 			return errors.New("EmailCodeTooFrequent")
 		}
+	}
+	if purpose == EmailCodePurposeRegister {
+		ldapExists, err := AllService.UserService.IsEmailExistsLdap(email)
+		if err != nil {
+			return errors.New("OperationFailed")
+		}
+		if AllService.UserService.InfoByEmail(email).Id > 0 || ldapExists {
+			return errors.New("EmailExists")
+		}
+	}
+	if purpose == EmailCodePurposeReset && AllService.UserService.InfoByEmail(email).Id == 0 {
+		return nil
 	}
 
 	code, err := randomEmailCode()
@@ -94,11 +103,22 @@ func ConsumeEmailCode(email, purpose, code string) error {
 }
 
 func (us *UserService) RegisterByEmail(email, password, code string) (*model.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if !ValidateEmailAddress(email) {
+		return nil, errors.New("InvalidEmail")
+	}
 	Lock.Lock("registerByEmail")
 	defer Lock.UnLock("registerByEmail")
+	ldapExists, err := us.IsEmailExistsLdap(email)
+	if err != nil {
+		return nil, errors.New("OperationFailed")
+	}
+	if us.InfoByEmail(email).Id > 0 || ldapExists {
+		return nil, errors.New("EmailExists")
+	}
 
 	var user *model.User
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		enabled, err := registrationStateTx(tx)
 		if err != nil {
 			return errors.New("OperationFailed")
@@ -124,11 +144,11 @@ func (us *UserService) RegisterByEmail(email, password, code string) (*model.Use
 		if err != nil {
 			return err
 		}
+		nickname := []rune(strings.SplitN(email, "@", 2)[0])
 		user = &model.User{
-			Username: email,
 			Email:    email,
 			Password: hashed,
-			Nickname: email,
+			Nickname: string(nickname[:min(len(nickname), 32)]),
 			GroupId:  model.DefaultUserGroupID,
 			IsAdmin:  &isAdmin,
 			Status:   model.COMMON_STATUS_ENABLE,

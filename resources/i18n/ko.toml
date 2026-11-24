@@ -38,10 +38,10 @@ description = "Need login."
 one = "먼저 로그인해주세요."
 other = "먼저 로그인해주세요."
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "사용자 이름이나 비밀번호가 올바르지 않습니다."
-other = "사용자 이름이나 비밀번호가 올바르지 않습니다."
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "이메일 또는 비밀번호 오류."
+other = "이메일 또는 비밀번호 오류."
 
 [SystemError]
 description = "System error."
@@ -156,3 +156,28 @@ other = "금지됨."
 description = "Register success wait admin confirm."
 one = "가입 성공, 관리자 확인 대기 중."
 other = "가입 성공, 관리자 확인 대기 중."
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "LDAP 동기화 계정은 이메일 주소를 변경할 수 없습니다."
+other = "LDAP 동기화 계정은 이메일 주소를 변경할 수 없습니다."
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "닉네임은 1자에서 32자 사이여야 합니다."
+other = "닉네임은 1자에서 32자 사이여야 합니다."
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "아바타 업로드에 실패했습니다."
+other = "아바타 업로드에 실패했습니다."
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "아바타 이미지를 선택하세요."
+other = "아바타 이미지를 선택하세요."
+
+[OauthEmailUnverified]
+description = "OauthEmailUnverified"
+one = "기존 계정을 연결하려면 OAuth 제공업체에서 이메일을 인증해야 합니다."
+other = "기존 계정을 연결하려면 OAuth 제공업체에서 이메일을 인증해야 합니다."

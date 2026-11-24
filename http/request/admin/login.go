@@ -1,7 +1,7 @@
 package admin
 
 type Login struct {
-	Username  string `json:"username" validate:"required" label:"用户名"`
+	Email     string `json:"email" validate:"required,email,lte=254" label:"邮箱"`
 	Password  string `json:"password,omitempty" validate:"required" label:"密码"`
 	Platform  string `json:"platform" label:"平台"`
 	Captcha   string `json:"captcha,omitempty" label:"验证码"`

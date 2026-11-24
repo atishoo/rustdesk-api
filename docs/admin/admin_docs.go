@@ -3412,6 +3412,55 @@ const docTemplateadmin = `{
                 }
             }
         },
+        "/admin/user/avatar": {
+            "post": {
+                "security": [
+                    {
+                        "token": []
+                    }
+                ],
+                "description": "接受 2 MB 以内且尺寸不超过 4096 × 4096 的 PNG、JPEG、GIF，保存为本地 PNG。",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "个人资料"
+                ],
+                "summary": "上传头像",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "头像图片",
+                        "name": "avatar",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/admin.LoginPayload"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/admin/user/changeCurPwd": {
             "post": {
                 "security": [
@@ -3692,9 +3741,15 @@ const docTemplateadmin = `{
                         "in": "query"
                     },
                     {
-                        "type": "integer",
-                        "description": "账户",
-                        "name": "username",
+                        "type": "string",
+                        "description": "邮箱",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "昵称",
+                        "name": "nickname",
                         "in": "query"
                     }
                 ],
@@ -3770,6 +3825,56 @@ const docTemplateadmin = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/user/profile": {
+            "put": {
+                "security": [
+                    {
+                        "token": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "个人资料"
+                ],
+                "summary": "修改当前账号昵称",
+                "parameters": [
+                    {
+                        "description": "昵称表单，nickname 为 1 至 32 个字符",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/admin.LoginPayload"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -4070,6 +4175,40 @@ const docTemplateadmin = `{
                     }
                 }
             }
+        },
+        "/avatar/{name}": {
+            "get": {
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "个人资料"
+                ],
+                "summary": "获取头像图片",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "头像文件名",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PNG 头像",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "头像不存在",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -4233,9 +4372,6 @@ const docTemplateadmin = `{
                     }
                 },
                 "token": {
-                    "type": "string"
-                },
-                "username": {
                     "type": "string"
                 }
             }
@@ -4417,15 +4553,14 @@ const docTemplateadmin = `{
         "admin.UserForm": {
             "type": "object",
             "required": [
-                "status",
-                "username"
+                "email",
+                "nickname",
+                "status"
             ],
             "properties": {
-                "avatar": {
-                    "type": "string"
-                },
                 "email": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 254
                 },
                 "group_id": {
                     "type": "integer"
@@ -4437,8 +4572,8 @@ const docTemplateadmin = `{
                     "type": "boolean"
                 },
                 "nickname": {
-                    "description": "Password string           ` + "`" + `json:\"password\" validate:\"required,gte=4,lte=20\"` + "`" + `",
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 32
                 },
                 "remark": {
                     "type": "string"
@@ -4453,11 +4588,6 @@ const docTemplateadmin = `{
                             "$ref": "#/definitions/model.StatusCode"
                         }
                     ]
-                },
-                "username": {
-                    "type": "string",
-                    "maxLength": 32,
-                    "minLength": 2
                 }
             }
         },
@@ -4546,8 +4676,8 @@ const docTemplateadmin = `{
         "github_com_lejianwen_rustdesk-api_v2_http_request_admin.Login": {
             "type": "object",
             "required": [
-                "password",
-                "username"
+                "email",
+                "password"
             ],
             "properties": {
                 "captcha": {
@@ -4556,13 +4686,14 @@ const docTemplateadmin = `{
                 "captcha_id": {
                     "type": "string"
                 },
+                "email": {
+                    "type": "string",
+                    "maxLength": 254
+                },
                 "password": {
                     "type": "string"
                 },
                 "platform": {
-                    "type": "string"
-                },
-                "username": {
                     "type": "string"
                 }
             }
@@ -5157,9 +5288,6 @@ const docTemplateadmin = `{
                     "$ref": "#/definitions/model.StatusCode"
                 },
                 "updated_at": {
-                    "type": "string"
-                },
-                "username": {
                     "type": "string"
                 }
             }

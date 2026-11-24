@@ -20,6 +20,7 @@ func Init(g *gin.Engine) {
 	}
 
 	adg := g.Group("/api/admin")
+	g.GET("/api/avatar/:name", (&admin.User{}).Avatar)
 	adg.OPTIONS("/*path", func(c *gin.Context) {})
 	LoginBind(adg)
 	adg.POST("/user/email-code", (&admin.User{}).EmailCode)
@@ -80,6 +81,8 @@ func UserBind(rg *gin.RouterGroup) {
 	{
 		cont := &admin.User{}
 		aR.GET("/current", cont.Current)
+		aR.PUT("/profile", cont.UpdateProfile)
+		aR.POST("/avatar", cont.UploadAvatar)
 		aR.POST("/changeCurPwd", cont.ChangeCurPwd)
 		aR.POST("/myOauth", cont.MyOauth)
 	}

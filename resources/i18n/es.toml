@@ -38,10 +38,10 @@ description = "Need login."
 one = "Por favor inicie sesión primero."
 other = "Por favor inicie sesión primero."
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "Error de usuario o contraseña."
-other = "Error de usuario o contraseña."
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "Correo electrónico o contraseña incorrectos."
+other = "Correo electrónico o contraseña incorrectos."
 
 [SystemError]
 description = "System error."
@@ -162,3 +162,28 @@ other = "Prohibido."
 description = "Register success, wait admin confirm."
 one = "Registro exitoso, espere la confirmación del administrador."
 other = "Registro exitoso, espere la confirmación del administrador."
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "Las cuentas sincronizadas con LDAP no pueden cambiar su dirección de correo electrónico."
+other = "Las cuentas sincronizadas con LDAP no pueden cambiar su dirección de correo electrónico."
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "El apodo debe tener entre 1 y 32 caracteres."
+other = "El apodo debe tener entre 1 y 32 caracteres."
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "No se pudo cargar el avatar."
+other = "No se pudo cargar el avatar."
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "Selecciona una imagen de avatar."
+other = "Selecciona una imagen de avatar."
+
+[OauthEmailUnverified]
+description = "OauthEmailUnverified"
+one = "El proveedor OAuth debe verificar el correo antes de vincular una cuenta existente."
+other = "El proveedor OAuth debe verificar el correo antes de vincular una cuenta existente."

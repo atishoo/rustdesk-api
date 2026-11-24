@@ -45,7 +45,6 @@ type LdapService struct {
 // LdapUser represents the user attributes retrieved from LDAP.
 type LdapUser struct {
 	Dn              string
-	Username        string
 	Email           string
 	FirstName       string
 	LastName        string
@@ -65,9 +64,12 @@ func (lu *LdapUser) ToUser(u *model.User) *model.User {
 	if u == nil {
 		u = &model.User{}
 	}
-	u.Username = lu.Username
-	u.Email = lu.Email
-	u.Nickname = lu.Name()
+	u.Email = strings.ToLower(strings.TrimSpace(lu.Email))
+	u.Nickname = strings.TrimSpace(lu.Name())
+	if u.Nickname == "" {
+		u.Nickname = strings.SplitN(u.Email, "@", 2)[0]
+	}
+	u.Nickname = string([]rune(u.Nickname)[:min(len([]rune(u.Nickname)), 32)])
 	if lu.Enabled {
 		u.Status = model.COMMON_STATUS_ENABLE
 	} else {
@@ -142,16 +144,19 @@ func (ls *LdapService) connectAndBindAdmin(cfg *config.Ldap) (*ldap.Conn, error)
 func (ls *LdapService) verifyCredentials(cfg *config.Ldap, username, password string) error {
 	ldapConn, err := ls.connectAndBind(cfg, username, password)
 	if err != nil {
-		return ErrLdapPasswordNotMatch
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
+			return ErrLdapPasswordNotMatch
+		}
+		return err
 	}
 	defer ldapConn.Close()
 	return nil
 }
 
-// Authenticate checks the provided username and password against LDAP.
+// Authenticate checks the provided email and password against LDAP.
 // Returns the corresponding *model.User if successful, or an error if not.
-func (ls *LdapService) Authenticate(username, password string) (*model.User, error) {
-	ldapUser, err := ls.loginUser(username, password)
+func (ls *LdapService) Authenticate(email, password string) (*model.User, error) {
+	ldapUser, err := ls.loginUser(email, password)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +167,12 @@ func (ls *LdapService) Authenticate(username, password string) (*model.User, err
 	return user, nil
 }
 
-func (ls *LdapService) loginUser(username, password string) (*LdapUser, error) {
-	ldapUser, err := ls.GetUserInfoByUsernameLdap(username)
+func (ls *LdapService) loginUser(email, password string) (*LdapUser, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if !ValidateEmailAddress(email) || password == "" {
+		return nil, ErrLdapPasswordNotMatch
+	}
+	ldapUser, err := ls.GetUserInfoByEmailLdap(email)
 	if err != nil {
 		return nil, err
 	}
@@ -226,13 +235,23 @@ func (ls *LdapService) isUserInGroup(cfg *config.Ldap, ldapUser *LdapUser, group
 // mapToLocalUser checks whether the user exists locally; if not, creates one.
 // If the user exists and Ldap.Sync is enabled, it updates local info.
 func (ls *LdapService) mapToLocalUser(cfg *config.Ldap, lu *LdapUser) (*model.User, error) {
+	email := strings.ToLower(strings.TrimSpace(lu.Email))
+	if !ValidateEmailAddress(email) {
+		return nil, errors.New("InvalidEmail")
+	}
 	localUser := &model.User{}
-	err := DB.Where("username = ?", lu.Username).First(localUser).Error
+	err := DB.Where("email = ?", email).First(localUser).Error
 	newUser := errors.Is(err, gorm.ErrRecordNotFound)
 	if err != nil && !newUser {
 		return nil, err
 	}
 	if !newUser && !cfg.User.Sync {
+		if !localUser.LdapSynced {
+			if err := DB.Model(localUser).Update("ldap_synced", true).Error; err != nil {
+				return nil, err
+			}
+			localUser.LdapSynced = true
+		}
 		return localUser, nil
 	}
 
@@ -240,6 +259,7 @@ func (ls *LdapService) mapToLocalUser(cfg *config.Ldap, lu *LdapUser) (*model.Us
 	if err != nil {
 		return nil, err
 	}
+	directoryUser.LdapSynced = true
 	if newUser {
 		directoryUser.GroupId = model.DefaultUserGroupID
 		if err := DB.Create(directoryUser).Error; err != nil {
@@ -255,8 +275,8 @@ func (ls *LdapService) mapToLocalUser(cfg *config.Ldap, lu *LdapUser) (*model.Us
 }
 
 func syncLdapUser(db *gorm.DB, localUser, directoryUser *model.User) error {
-	// Directory synchronization only writes LDAP-owned fields.
-	if err := db.Model(localUser).Updates(directoryUser).Error; err != nil {
+	// Keep personal profile edits while applying directory permissions and revocation.
+	if err := db.Model(localUser).Select("is_admin", "status", "ldap_synced").Updates(directoryUser).Error; err != nil {
 		return err
 	}
 	return db.First(localUser, localUser.Id).Error
@@ -272,56 +292,17 @@ func (ls *LdapService) localUserValues(cfg *config.Ldap, lu *LdapUser) (*model.U
 	return user, nil
 }
 
-// IsUsernameExists checks if a username exists in LDAP (can be useful for local registration checks).
-func (ls *LdapService) IsUsernameExists(username string) bool {
-
-	cfg := &Config.Ldap
-	if !cfg.Enable {
-		return false
-	}
-	sr, err := ls.usernameSearchResult(cfg, username)
-	if err != nil {
-		return false
-	}
-	return len(sr.Entries) > 0
-}
-
 // IsEmailExists checks if an email exists in LDAP (can be useful for local registration checks).
-func (ls *LdapService) IsEmailExists(email string) bool {
+func (ls *LdapService) IsEmailExists(email string) (bool, error) {
 	cfg := &Config.Ldap
 	if !cfg.Enable {
-		return false
+		return false, nil
 	}
 	sr, err := ls.emailSearchResult(cfg, email)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return len(sr.Entries) > 0
-}
-
-// GetUserInfoByUsernameLdap returns the user info from LDAP for the given username.
-func (ls *LdapService) GetUserInfoByUsernameLdap(username string) (*LdapUser, error) {
-	cfg := &Config.Ldap
-	if !cfg.Enable {
-		return nil, ErrLdapNotEnabled
-	}
-	sr, err := ls.usernameSearchResult(cfg, username)
-	if err != nil {
-		return nil, errors.Join(ErrLdapSearchFailed, err)
-	}
-	if len(sr.Entries) != 1 {
-		return nil, ErrLdapUserNotFound
-	}
-	return ls.userResultToLdapUser(cfg, sr.Entries[0]), nil
-}
-
-// GetUserInfoByUsernameLocal returns the user info from LDAP for the given username. If the user exists, it will sync the user info to the local database.
-func (ls *LdapService) GetUserInfoByUsernameLocal(username string) (*model.User, error) {
-	ldapUser, err := ls.GetUserInfoByUsernameLdap(username)
-	if err != nil {
-		return &model.User{}, err
-	}
-	return ls.mapToLocalUser(&Config.Ldap, ldapUser)
+	return len(sr.Entries) > 0, nil
 }
 
 // GetUserInfoByEmailLdap returns the user info from LDAP for the given email.
@@ -347,15 +328,6 @@ func (ls *LdapService) GetUserInfoByEmailLocal(email string) (*model.User, error
 		return &model.User{}, err
 	}
 	return ls.mapToLocalUser(&Config.Ldap, ldapUser)
-}
-
-// usernameSearchResult returns the search result for the given username.
-func (ls *LdapService) usernameSearchResult(cfg *config.Ldap, username string) (*ldap.SearchResult, error) {
-	// Build the combined filter for the username
-	filter := ls.filterField(ls.fieldUsername(cfg), username)
-	// Create the *ldap.SearchRequest
-	searchRequest := ls.buildUserSearchRequest(cfg, filter)
-	return ls.searchResult(cfg, searchRequest)
 }
 
 // emailSearchResult returns the search result for the given email.
@@ -407,7 +379,6 @@ func (ls *LdapService) buildUserSearchRequest(cfg *config.Ldap, filter string) *
 func (ls *LdapService) buildUserAttributes(cfg *config.Ldap) []string {
 	return []string{
 		"dn",
-		ls.fieldUsername(cfg),
 		ls.fieldEmail(cfg),
 		ls.fieldFirstName(cfg),
 		ls.fieldLastName(cfg),
@@ -420,7 +391,6 @@ func (ls *LdapService) buildUserAttributes(cfg *config.Ldap) []string {
 func (ls *LdapService) userResultToLdapUser(cfg *config.Ldap, entry *ldap.Entry) *LdapUser {
 	lu := &LdapUser{
 		Dn:              entry.DN,
-		Username:        entry.GetAttributeValue(ls.fieldUsername(cfg)),
 		Email:           entry.GetAttributeValue(ls.fieldEmail(cfg)),
 		FirstName:       entry.GetAttributeValue(ls.fieldFirstName(cfg)),
 		LastName:        entry.GetAttributeValue(ls.fieldLastName(cfg)),
@@ -434,15 +404,7 @@ func (ls *LdapService) userResultToLdapUser(cfg *config.Ldap, entry *ldap.Entry)
 
 // filterField helps build simple attribute filters, e.g. (uid=username).
 func (ls *LdapService) filterField(field, value string) string {
-	return fmt.Sprintf("(%s=%s)", field, value)
-}
-
-// fieldUsername returns the configured username attribute or "uid" if not set.
-func (ls *LdapService) fieldUsername(cfg *config.Ldap) string {
-	if cfg.User.Username == "" {
-		return "uid"
-	}
-	return cfg.User.Username
+	return fmt.Sprintf("(%s=%s)", field, ldap.EscapeFilter(value))
 }
 
 // fieldEmail returns the configured email attribute or "mail" if not set.

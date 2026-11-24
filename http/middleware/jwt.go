@@ -31,7 +31,7 @@ func JwtAuth() gin.HandlerFunc {
 		user := service.AllService.UserService.InfoById(uid)
 		//user := &model.User{
 		//	Id:       uid,
-		//	Username: "测试用户",
+		//	Nickname: "测试用户",
 		//}
 		if user.Id == 0 {
 			response.Fail(c, 403, response.TranslateMsg(c, "NeedLogin"))

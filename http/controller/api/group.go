@@ -85,13 +85,13 @@ func (g *Group) Peers(c *gin.Context) {
 		//仅能获取到自己
 		users = append(users, u)
 	} else {
-		users = service.AllService.UserService.ListIdAndNameByGroupId(u.GroupId)
+		users = service.AllService.UserService.ListIdentitiesByGroupId(u.GroupId)
 	}
 
-	namesById := make(map[uint]string, len(users))
+	emailsById := make(map[uint]string, len(users))
 	userIds := make([]uint, 0, len(users))
 	for _, user := range users {
-		namesById[user.Id] = user.Username
+		emailsById[user.Id] = user.Email
 		userIds = append(userIds, user.Id)
 	}
 	page := q.Page
@@ -106,7 +106,7 @@ func (g *Group) Peers(c *gin.Context) {
 	data := make([]*apiResp.GroupPeerPayload, 0, len(peers))
 	for _, peer := range peers {
 		pp := &apiResp.GroupPeerPayload{}
-		pp.FromPeer(peer, namesById[peer.UserId])
+		pp.FromPeer(peer, emailsById[peer.UserId])
 		data = append(data, pp)
 	}
 	c.JSON(http.StatusOK, response.DataResponse{

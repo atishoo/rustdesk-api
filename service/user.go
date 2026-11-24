@@ -2,13 +2,12 @@ package service
 
 import (
 	"errors"
-	"math/rand"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-sql-driver/mysql"
+	"github.com/lejianwen/rustdesk-api/v2/lib/upload"
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"gorm.io/gorm"
@@ -25,17 +24,10 @@ func (us *UserService) InfoById(id uint) *model.User {
 	return u
 }
 
-// InfoByUsername 根据用户名取用户信息
-func (us *UserService) InfoByUsername(un string) *model.User {
-	u := &model.User{}
-	DB.Where("username = ?", un).First(u)
-	return u
-}
-
 // InfoByEmail 根据邮箱取用户信息
 func (us *UserService) InfoByEmail(email string) *model.User {
 	u := &model.User{}
-	DB.Where("email = ?", email).First(u)
+	DB.Where("email = ?", strings.ToLower(strings.TrimSpace(email))).First(u)
 	return u
 }
 
@@ -46,22 +38,35 @@ func (us *UserService) InfoByOpenid(openid string) *model.User {
 	return u
 }
 
-// InfoByUsernamePassword 根据用户名密码取用户信息
-func (us *UserService) InfoByUsernamePassword(username, password string) *model.User {
+// InfoByEmailPassword 根据邮箱密码取用户信息
+func (us *UserService) InfoByEmailPassword(email, password string) *model.User {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if !ValidateEmailAddress(email) || password == "" {
+		return &model.User{}
+	}
 	if Config.Ldap.Enable {
-		u, err := AllService.LdapService.Authenticate(username, password)
+		u, err := AllService.LdapService.Authenticate(email, password)
 		if err == nil {
 			return u
 		}
 		Logger.Errorf("LDAP authentication failed, %v", err)
-		if errors.Is(err, ErrLdapToLocalUserFailed) {
+		// Keep an independent local administrator usable when the directory is
+		// unavailable; explicit LDAP credential or policy failures must not fall
+		// back to a local password.
+		local := &model.User{}
+		DB.Select("id", "password", "is_admin", "ldap_synced").Where("email = ?", email).First(local)
+		localAdminFallback := local.Id > 0 && local.Password != "" && !local.LdapSynced && local.IsAdmin != nil && *local.IsAdmin
+		unavailable := errors.Is(err, ErrLdapConnectFailed) ||
+			errors.Is(err, ErrLdapBindService) ||
+			errors.Is(err, ErrLdapSearchFailed) ||
+			errors.Is(err, ErrLdapTlsFailed)
+		if !localAdminFallback || (!unavailable && !errors.Is(err, ErrLdapUserNotFound)) {
 			return &model.User{}
 		}
 		Logger.Warn("Fallback to local database")
 	}
 	u := &model.User{}
-	login := strings.ToLower(strings.TrimSpace(username))
-	DB.Where("username = ? OR email = ?", username, login).First(u)
+	DB.Where("email = ?", email).First(u)
 	if u.Id == 0 {
 		return u
 	}
@@ -102,7 +107,7 @@ func (us *UserService) GenerateToken(u *model.User) (string, int64) {
 	if len(Jwt.Key) > 0 {
 		return Jwt.GenerateTokenBefore(u.Id, time.Unix(expiresAt, 0))
 	}
-	return utils.Md5(u.Username + time.Now().String()), expiresAt
+	return utils.Md5(u.Email + time.Now().String()), expiresAt
 }
 
 // Login 登录
@@ -196,9 +201,9 @@ func (us *UserService) ListIdsByGroupId(groupId uint) (ids []uint) {
 
 }
 
-// ListIdAndNameByGroupId 根据组id取用户id和用户名列表
-func (us *UserService) ListIdAndNameByGroupId(groupId uint) (res []*model.User) {
-	DB.Model(&model.User{}).Where("group_id = ?", groupId).Select("id, username").Find(&res)
+// ListIdentitiesByGroupId 根据组 ID 取用户身份及展示信息。
+func (us *UserService) ListIdentitiesByGroupId(groupId uint) (res []*model.User) {
+	DB.Model(&model.User{}).Where("group_id = ?", groupId).Select("id, email, nickname, avatar").Find(&res)
 	return res
 }
 
@@ -209,12 +214,21 @@ func (us *UserService) CheckUserEnable(u *model.User) bool {
 
 // Create 创建
 func (us *UserService) Create(u *model.User) error {
-	// The initial username should be formatted, and the username should be unique
-	if us.IsUsernameExists(u.Username) {
-		return errors.New("UsernameExists")
+	u.Email = strings.ToLower(strings.TrimSpace(u.Email))
+	u.Nickname = strings.TrimSpace(u.Nickname)
+	if !ValidateEmailAddress(u.Email) {
+		return errors.New("InvalidEmail")
 	}
-	u.Username = us.formatUsername(u.Username)
-	var err error
+	if u.Nickname == "" {
+		return errors.New("nickname is required")
+	}
+	ldapExists, err := us.IsEmailExistsLdap(u.Email)
+	if err != nil {
+		return err
+	}
+	if us.InfoByEmail(u.Email).Id > 0 || ldapExists {
+		return errors.New("EmailExists")
+	}
 	u.Password, err = utils.EncryptPassword(u.Password)
 	if err != nil {
 		return err
@@ -299,6 +313,9 @@ func (us *UserService) Delete(u *model.User) error {
 		if last {
 			return errors.New("The last admin user cannot be deleted")
 		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "avatar").First(u, u.Id).Error; err != nil {
+			return err
+		}
 		if err := tx.Delete(u).Error; err != nil {
 			return err
 		}
@@ -312,6 +329,9 @@ func (us *UserService) Delete(u *model.User) error {
 	if err != nil {
 		return err
 	}
+	if err := upload.RemoveAvatar(u.Avatar); err != nil {
+		Logger.Warn("User deleted successfully, but failed to remove avatar.")
+	}
 	// 删除关联的peer
 	if err := AllService.PeerService.EraseUserId(u.Id); err != nil {
 		Logger.Warn("User deleted successfully, but failed to unlink peer.")
@@ -322,6 +342,40 @@ func (us *UserService) Delete(u *model.User) error {
 
 // Update 更新
 func (us *UserService) Update(u *model.User, fields ...string) error {
+	for _, field := range fields {
+		switch field {
+		case "email":
+			u.Email = strings.ToLower(strings.TrimSpace(u.Email))
+			if !ValidateEmailAddress(u.Email) {
+				return errors.New("InvalidEmail")
+			}
+			current := us.InfoById(u.Id)
+			if current.Id > 0 && !strings.EqualFold(current.Email, u.Email) {
+				if current.LdapSynced {
+					return errors.New("LdapSyncedEmailCannotChange")
+				}
+				if Config.Ldap.Enable {
+					if _, err := AllService.LdapService.GetUserInfoByEmailLdap(current.Email); err == nil {
+						return errors.New("LdapSyncedEmailCannotChange")
+					} else if !errors.Is(err, ErrLdapUserNotFound) {
+						return err
+					}
+				}
+				ldapExists, err := us.IsEmailExistsLdap(u.Email)
+				if err != nil {
+					return err
+				}
+				if ldapExists {
+					return errors.New("EmailExists")
+				}
+			}
+		case "nickname":
+			u.Nickname = strings.TrimSpace(u.Nickname)
+			if u.Nickname == "" {
+				return errors.New("nickname is required")
+			}
+		}
+	}
 	update := func(tx *gorm.DB) error {
 		var current model.User
 		if err := tx.Select("id").Where("id = ?", u.Id).First(&current).Error; err != nil {
@@ -420,28 +474,25 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string, id
 		return err, user
 	}
 	//check if this email has been registered
-	email := oauthUser.Email
-	// only email is not empty
-	if email != "" {
-		email = strings.ToLower(email)
-		// update email to oauthUser, in case it contain upper case
-		oauthUser.Email = email
-		// call this, if find user by email, it will update the email to local database
-		var ldapErr error
-		user, ldapErr = AllService.LdapService.GetUserInfoByEmailLocal(email)
-		// If we enable ldap, and the error is not ErrLdapUserNotFound, return the error because we could not sure if the user is not found in ldap
-		if !(errors.Is(ldapErr, ErrLdapNotEnabled) || errors.Is(ldapErr, ErrLdapUserNotFound) || ldapErr == nil) {
-			return ldapErr, user
-		}
-		if user.Id == 0 {
-			// this means the user is not found in ldap, maybe ldao is not enabled
-			user = us.InfoByEmail(email)
-		}
+	email := strings.ToLower(strings.TrimSpace(oauthUser.Email))
+	if !ValidateEmailAddress(email) {
+		return errors.New("InvalidEmail"), nil
+	}
+	if !oauthUser.VerifiedEmail {
+		return errors.New("OauthEmailUnverified"), nil
+	}
+	oauthUser.Email = email
+	var ldapErr error
+	user, ldapErr = AllService.LdapService.GetUserInfoByEmailLocal(email)
+	if !(errors.Is(ldapErr, ErrLdapNotEnabled) || errors.Is(ldapErr, ErrLdapUserNotFound) || ldapErr == nil) {
+		return ldapErr, user
+	}
+	if user.Id == 0 {
+		user = us.InfoByEmail(email)
 	}
 	if user == nil || user.Id == 0 {
-		username := us.formatUsername(oauthUser.Username)
-		user = &model.User{Username: us.GenerateUsernameByOauth(username), GroupId: model.DefaultUserGroupID}
-		oauthUser.ToUser(user, false)
+		user = &model.User{GroupId: model.DefaultUserGroupID}
+		oauthUser.ToUser(user)
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
@@ -476,14 +527,6 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string, id
 	return err, user
 }
 
-// GenerateUsernameByOauth 生成用户名
-func (us *UserService) GenerateUsernameByOauth(name string) string {
-	for us.IsUsernameExists(name) {
-		name += strconv.Itoa(rand.Intn(10)) // Append a random digit (0-9)
-	}
-	return name
-}
-
 // UserThirdsByUserId
 func (us *UserService) UserThirdsByUserId(userId uint) (res []*model.UserThird) {
 	DB.Where("user_id = ?", userId).Find(&res)
@@ -505,34 +548,9 @@ func (us *UserService) IsPasswordEmptyById(id uint) bool {
 	return u.Password == ""
 }
 
-// IsPasswordEmptyByUsername 根据用户id判断密码是否为空，主要用于第三方登录的自动注册
-func (us *UserService) IsPasswordEmptyByUsername(username string) bool {
-	u := &model.User{}
-	if DB.Where("username = ?", username).First(u).Error != nil {
-		return false
-	}
-	return u.Password == ""
-}
-
 // IsPasswordEmptyByUser 判断密码是否为空，主要用于第三方登录的自动注册
 func (us *UserService) IsPasswordEmptyByUser(u *model.User) bool {
 	return us.IsPasswordEmptyById(u.Id)
-}
-
-// Register 注册, 如果用户名已存在则返回nil
-func (us *UserService) Register(username string, email string, password string, status model.StatusCode) *model.User {
-	u := &model.User{
-		Username: username,
-		Email:    email,
-		Password: password,
-		GroupId:  model.DefaultUserGroupID,
-		Status:   status,
-	}
-	err := us.Create(u)
-	if err != nil {
-		return nil
-	}
-	return u
 }
 
 func (us *UserService) TokenList(page uint, size uint, f func(tx *gorm.DB)) *model.UserTokenList {
@@ -557,13 +575,6 @@ func (us *UserService) TokenInfoById(id uint) *model.UserToken {
 
 func (us *UserService) DeleteToken(l *model.UserToken) error {
 	return DB.Delete(l).Error
-}
-
-// Helper functions, used for formatting username
-func (us *UserService) formatUsername(username string) string {
-	username = strings.ReplaceAll(username, " ", "")
-	username = strings.ToLower(username)
-	return username
 }
 
 // Helper functions, getUserCount
@@ -617,17 +628,6 @@ func (us *UserService) VerifyJWT(token string) (uint, error) {
 	return Jwt.ParseToken(token)
 }
 
-// IsUsernameExists 判断用户名是否存在, it will check the internal database and LDAP(if enabled)
-func (us *UserService) IsUsernameExists(username string) bool {
-	return us.IsUsernameExistsLocal(username) || AllService.LdapService.IsUsernameExists(username)
-}
-
-func (us *UserService) IsUsernameExistsLocal(username string) bool {
-	u := &model.User{}
-	DB.Where("username = ?", username).First(u)
-	return u.Id != 0
-}
-
-func (us *UserService) IsEmailExistsLdap(email string) bool {
+func (us *UserService) IsEmailExistsLdap(email string) (bool, error) {
 	return AllService.LdapService.IsEmailExists(email)
 }

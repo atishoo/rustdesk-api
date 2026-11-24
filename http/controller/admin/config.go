@@ -113,8 +113,8 @@ func (co *Config) AdminConfig(c *gin.Context) {
 		}
 	}
 
-	//replace {{username}} to username
-	hello = strings.Replace(hello, "{{username}}", u.Username, -1)
+	// Replace the nickname in the welcome message.
+	hello = strings.Replace(hello, "{{nickname}}", u.Nickname, -1)
 	response.Success(c, &gin.H{
 		"title": global.Config.Admin.Title,
 		"hello": hello,

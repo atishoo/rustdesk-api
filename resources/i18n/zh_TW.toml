@@ -38,10 +38,10 @@ description = "Need login."
 one = "請先登入。"
 other = "請先登入。"
 
-[UsernameOrPasswordError]
-description = "Username or password error."
-one = "使用者名稱或密碼錯誤。"
-other = "使用者名稱或密碼錯誤。"
+[EmailOrPasswordError]
+description = "Email or password error."
+one = "電子郵件或密碼錯誤。"
+other = "電子郵件或密碼錯誤。"
 
 [SystemError]
 description = "System error."
@@ -162,3 +162,28 @@ other = "已被禁用。"
 description = "Register success, wait admin confirm."
 one = "註冊成功，等待管理員確認。"
 other = "註冊成功，等待管理員確認。"
+
+[LdapSyncedEmailCannotChange]
+description = "LDAP-synchronized accounts cannot change their email address."
+one = "LDAP 同步帳號無法修改電子郵件地址。"
+other = "LDAP 同步帳號無法修改電子郵件地址。"
+
+[InvalidNickname]
+description = "InvalidNickname"
+one = "暱稱須為 1 至 32 個字元。"
+other = "暱稱須為 1 至 32 個字元。"
+
+[AvatarUploadFailed]
+description = "AvatarUploadFailed"
+one = "頭像上傳失敗。"
+other = "頭像上傳失敗。"
+
+[AvatarMissing]
+description = "AvatarMissing"
+one = "請選擇頭像圖片。"
+other = "請選擇頭像圖片。"
+
+[OauthEmailUnverified]
+description = "OauthEmailUnverified"
+one = "OAuth 提供者必須先驗證電子郵件，才能綁定現有帳號。"
+other = "OAuth 提供者必須先驗證電子郵件，才能綁定現有帳號。"
