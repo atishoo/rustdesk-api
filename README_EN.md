@@ -30,7 +30,7 @@ desktop software that provides self-hosted solutions.
     - Authorized login, 
       - supports `GitHub`, `Google` and `OIDC` login, 
       - supports `web admin` authorized login, 
-      - supports LDAP(test AD and openladp) if API Server config
+      - supports LDAP (tested with AD and OpenLDAP), enabled in management console service settings
     - i18n
 - Web Admin
     - User Management
@@ -38,7 +38,7 @@ desktop software that provides self-hosted solutions.
     - Address Book Management
     - Tag Management
     - OAuth Management
-    - LDAP Config by config file or ENV
+    - Service settings, including LDAP
     - Login Logs
     - Connection Logs
     - File Transfer Logs
@@ -107,7 +107,7 @@ displaying data. Build the console from the companion Web repository. [capylink-
     - **Simple commands**: Open **服务命令** → **简单** to read or update service parameters using forms.
     - **Advanced commands**: Open **服务命令** → **高级** to select a target service, send commands, and manage custom commands.
 
-11. **LDAP support**. Once LDAP is configured on the API server, users can sign in with directory accounts (tested with AD and OpenLDAP). Before enabling `ldap.user.sync`, keep an enabled local administrator outside LDAP synchronization and verify that it can sign in independently. Synchronization applies directory administrator role removals even when only one administrator remains. If the directory verifies the credentials but the role lookup or synchronization fails, the sign-in is denied.
+11. **LDAP support**. Once LDAP is configured in the management console service settings, users can sign in with directory accounts (tested with AD and OpenLDAP). To enable LDAP or change an enabled configuration, sign in as a local administrator outside the LDAP user search and enter that administrator’s current password. Synchronization applies directory administrator role removals even when only one administrator remains. If the directory verifies the credentials but the role lookup or synchronization fails, the sign-in is denied.
   
 ### Web Client:
 
@@ -149,7 +149,13 @@ Share links redeem through the Web Client origin at `/api/shared-peer` by defaul
 * If `gorm.type` is set to `sqlite`, MySQL-related configurations are not required.
 * Language support: `en` and `zh-CN` are supported. The default is `zh-CN`.
 
+After adding the OAuth `proxy_url` field, existing databases require the deployment operator to add a `proxy_url TEXT` column to `oauths` manually. New databases create the field from the current model.
+
+Open LDAP settings under Service Settings in the management console. Changes take effect when saved. New databases initialize the LDAP tables and user fields. Before starting an upgraded deployment, make sure the schema includes the `ldap_settings` and `ldap_account_verifications` tables and the `users.ldap_synced` and `users.ldap_permission_revision` fields as defined in the models, then enter the LDAP settings in the console. [LDAP model](./model/ldapSetting.go) · [User model](./model/user.go)
+
 Password login through Vite's default same-origin proxy works with an empty origin allowlist. To call the API across origins during local development or use WebAuth or OIDC from Vite, explicitly list the development origin, such as `http://127.0.0.1:5174`, in the local API's `app.admin-origins` setting or `CAPYLINK_API_APP_ADMIN_ORIGINS` environment variable.
+
+When third-party OAuth login is enabled, the API connects to each provider directly by default. If a provider requires an HTTP(S) egress proxy, set `proxy_url` in that provider's OAuth configuration.
 
 Admin OAuth requests require an absolute `redirect_url`. Its origin must match the request origin and appear in `app.admin-origins` or match `capylink.api-server`. For same-origin reverse proxy deployments, preserve the original `Host`, set `X-Forwarded-Proto` to the public scheme, and list the immediate proxy address in `gin.trust-proxy` or `CAPYLINK_API_GIN_TRUST_PROXY`.
 
@@ -179,8 +185,6 @@ Upgrade existing configuration from the `rustdesk` root to `capylink`, and renam
 | CAPYLINK_API_SMTP_CRYPTO                               | SMTP encryption mode, use `ssl` for port 465                                                                                                        | `ssl`                         |
 | ----- ADMIN Configuration-----                         | ----------                                                                                                                                          | ----------                    |
 | CAPYLINK_API_ADMIN_TITLE                               | Admin Title                                                                                                                                         | `capylink Api Admin`          |
-| CAPYLINK_API_ADMIN_HELLO                               | Admin welcome message, you can use `html`                                                                                                           |                               |
-| CAPYLINK_API_ADMIN_HELLO_FILE                          | Admin welcome message file,<br>will override `CAPYLINK_API_ADMIN_HELLO`                                                                             | `./conf/admin/hello.html`     |
 | ----- GIN Configuration -----                          | ---------------------------------------                                                                                                             | ----------------------------- |
 | CAPYLINK_API_GIN_TRUST_PROXY                           | Trusted proxy IPs, separated by commas.                                                                                                             | 192.168.1.2,192.168.1.3       |
 | ----- GORM Configuration -----                         | ---------------------------------------                                                                                                             | ----------------------------- |
@@ -202,9 +206,6 @@ Upgrade existing configuration from the `rustdesk` root to `capylink`, and renam
 | CAPYLINK_API_CAPYLINK_KEY_FILE                         | capylink key file                                                                                                                                   | `./conf/data/id_ed25519.pub`  |
 | CAPYLINK_API_CAPYLINK<br/>_WEBCLIENT_MAGIC_QUERYONLINE | New online query method is enabled in the web client v2; '1': Enabled, '0': Disabled, not enabled by default                                        | `0`                           |
 | CAPYLINK_API_CAPYLINK_WS_HOST                          | Custom Websocket Host                                                                                                                               | `wss://192.168.1.123:1234`    |
-| ---- PROXY -----                                       | ---------------                                                                                                                                     | ----------                    |
-| CAPYLINK_API_PROXY_ENABLE                              | proxy_enable :`false`, `true`                                                                                                                       | `false`                       |
-| CAPYLINK_API_PROXY_HOST                                | proxy_host                                                                                                                                          | `http://127.0.0.1:1080`       |
 | ----JWT----                                            | --------                                                                                                                                            | --------                      |
 | CAPYLINK_API_JWT_KEY                                   | Custom JWT key used to validate ID Server login tokens; an empty value disables JWT validation. |                               |
 | CAPYLINK_API_JWT_EXPIRE_DURATION                       | JWT expire duration                                                                                                                                 | `168h`                        |

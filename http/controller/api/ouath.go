@@ -135,7 +135,7 @@ func (o *Oauth) OidcAuthQueryPre(c *gin.Context, webAdmin bool) (*model.User, *m
 		Ip:       c.ClientIP(),
 		Type:     model.LoginLogTypeOauth,
 		Platform: claimed.DeviceOs,
-	}, !webAdmin)
+	}, !webAdmin, nil)
 
 	if err != nil {
 		// 恢复原状态，保留原来的过期时间。
@@ -165,7 +165,7 @@ func (o *Oauth) OidcAuthQuery(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResp.LoginRes{
 		AccessToken: ut.Token,
 		Type:        "access_token",
-		User:        *(&apiResp.UserPayload{}).FromUser(u),
+		User:        *(&apiResp.UserPayload{}).FromCurrentUser(u),
 	})
 }
 

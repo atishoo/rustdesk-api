@@ -109,7 +109,11 @@ func (us *UserService) RegisterByEmail(email, password, code string) (*model.Use
 	}
 	Lock.Lock("registerByEmail")
 	defer Lock.UnLock("registerByEmail")
-	ldapExists, err := us.IsEmailExistsLdap(email)
+	cfg, err := GetLdapSetting()
+	if err != nil {
+		return nil, errors.New("OperationFailed")
+	}
+	ldapExists, err := AllService.LdapService.isEmailExists(&cfg, email)
 	if err != nil {
 		return nil, errors.New("OperationFailed")
 	}
@@ -119,6 +123,9 @@ func (us *UserService) RegisterByEmail(email, password, code string) (*model.Use
 
 	var user *model.User
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockLdapRevision(tx, cfg.Revision, clause.LockingStrengthUpdate); err != nil {
+			return err
+		}
 		enabled, err := registrationStateTx(tx)
 		if err != nil {
 			return errors.New("OperationFailed")
@@ -177,7 +184,7 @@ func (us *UserService) ResetPasswordByEmail(email, password, code string) error 
 		if err := tx.Where("email = ?", email).First(&user).Error; err != nil {
 			return errors.New("ItemNotFound")
 		}
-		hashed, err := utils.EncryptPassword(password)
+		hashed, err := encryptPassword(password)
 		if err != nil {
 			return err
 		}
@@ -216,6 +223,9 @@ func hashEmailCode(email, purpose, code string) string {
 }
 
 func encryptPassword(password string) (string, error) {
+	if password == "" {
+		return "", errors.New("password is required")
+	}
 	return utils.EncryptPassword(password)
 }
 

@@ -36,6 +36,7 @@ var (
 	ErrLdapUnbindRateLimited        = errors.New("LDAP verification attempts temporarily limited")
 	ErrOauthIdentityBound           = errors.New("OAuth provider identity cannot be changed while accounts are linked")
 	ErrOauthIdentityChanged         = errors.New("OAuth provider identity has changed since authorization")
+	ErrOauthCredentialsChanged      = errors.New("OAuth provider credentials have changed since editing began")
 )
 
 var ldapUnbindLimiter = utils.NewLoginLimiter(utils.SecurityPolicy{
@@ -204,11 +205,14 @@ func (os *OauthService) BeginAuth(op string) (error error, state, verifier, nonc
 	return err, state, verifier, nonce, ""
 }
 
-func (os *OauthService) FetchOidcProvider(issuer string) (error, *oidc.Provider) {
-
-	// Get the HTTP client (with or without proxy based on configuration)
-	client := getHTTPClientWithProxy()
-
+func (os *OauthService) FetchOidcProvider(issuer, proxyURL string) (error, *oidc.Provider) {
+	client, err := oauthHTTPClient(proxyURL)
+	if err != nil {
+		return err, nil
+	}
+	if client != oauthDirectClient {
+		defer client.CloseIdleConnections()
+	}
 	ctx := oidc.ClientContext(context.Background(), client)
 
 	provider, err := oidc.NewProvider(ctx, issuer)
@@ -243,17 +247,33 @@ func (os *OauthService) LinuxdoProvider() *oidc.Provider {
 	}).NewProvider(context.Background())
 }
 
+func OauthRedirectURL() string {
+	base := strings.TrimSpace(Config.Capylink.ApiServer)
+	address, err := url.Parse(base)
+	if err != nil || (address.Scheme != "http" && address.Scheme != "https") || address.Hostname() == "" ||
+		address.User != nil || strings.ContainsAny(base, "?#") {
+		return ""
+	}
+	if port := address.Port(); port != "" {
+		if number, err := strconv.ParseUint(port, 10, 16); err != nil || number == 0 {
+			return ""
+		}
+	}
+	return strings.TrimRight(address.String(), "/") + "/api/oidc/callback"
+}
+
 // GetOauthConfig retrieves the OAuth2 configuration based on the provider name
 func (os *OauthService) GetOauthConfig(op string) (err error, oauthInfo *model.Oauth, oauthConfig *oauth2.Config, provider *oidc.Provider) {
 	//err, oauthInfo, oauthConfig = os.getOauthConfigGeneral(op)
 	oauthInfo = os.InfoByOp(op)
-	if oauthInfo.Id == 0 || oauthInfo.ClientId == "" || oauthInfo.ClientSecret == "" {
+	redirectURL := OauthRedirectURL()
+	if oauthInfo.Id == 0 || oauthInfo.ClientId == "" || oauthInfo.ClientSecret == "" || redirectURL == "" {
 		return errors.New("ConfigNotFound"), nil, nil, nil
 	}
 	oauthConfig = &oauth2.Config{
 		ClientID:     oauthInfo.ClientId,
 		ClientSecret: oauthInfo.ClientSecret,
-		RedirectURL:  Config.Capylink.ApiServer + "/api/oidc/callback",
+		RedirectURL:  redirectURL,
 	}
 
 	// Maybe should validate the oauthConfig here
@@ -275,7 +295,7 @@ func (os *OauthService) GetOauthConfig(op string) (err error, oauthInfo *model.O
 	//	oauthConfig.Endpoint = google.Endpoint
 	//	oauthConfig.Scopes = os.constructScopes(oauthInfo.Scopes)
 	case model.OauthTypeOidc, model.OauthTypeGoogle:
-		err, provider = os.FetchOidcProvider(oauthInfo.Issuer)
+		err, provider = os.FetchOidcProvider(oauthInfo.Issuer, oauthInfo.ProxyURL)
 		if err != nil {
 			return err, nil, nil, nil
 		}
@@ -287,30 +307,26 @@ func (os *OauthService) GetOauthConfig(op string) (err error, oauthInfo *model.O
 	return nil, oauthInfo, oauthConfig, provider
 }
 
-func getHTTPClientWithProxy() *http.Client {
-	//add timeout 30s
-	timeout := time.Duration(60) * time.Second
-	if Config.Proxy.Enable {
-		if Config.Proxy.Host == "" {
-			Logger.Warn("Proxy is enabled but proxy host is empty.")
-			return http.DefaultClient
-		}
-		proxyURL, err := url.Parse(Config.Proxy.Host)
-		if err != nil {
-			Logger.Warn("Invalid proxy URL: ", err)
-			return http.DefaultClient
-		}
-		transport := &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
-		}
-		return &http.Client{Transport: transport, Timeout: timeout}
-	}
-	return http.DefaultClient
-}
-func (os *OauthService) callbackBase(oauthConfig *oauth2.Config, provider *oidc.Provider, code string, verifier string, nonce string, userData interface{}) (err error, client *http.Client) {
+var oauthDirectClient = func() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{Transport: transport, Timeout: 60 * time.Second}
+}()
 
-	// 设置代理客户端
-	httpClient := getHTTPClientWithProxy()
+func oauthHTTPClient(proxyURL string) (*http.Client, error) {
+	proxy, err := model.ParseOauthProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if proxy == nil {
+		return oauthDirectClient, nil
+	}
+	transport := oauthDirectClient.Transport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(proxy)
+	return &http.Client{Transport: transport, Timeout: oauthDirectClient.Timeout}, nil
+}
+
+func (os *OauthService) callbackBase(oauthConfig *oauth2.Config, provider *oidc.Provider, httpClient *http.Client, code string, verifier string, nonce string, userData interface{}) (err error, client *http.Client) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
 
 	exchangeOpts := make([]oauth2.AuthCodeOption, 0, 1)
@@ -329,7 +345,7 @@ func (os *OauthService) callbackBase(oauthConfig *oauth2.Config, provider *oidc.
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if ok && rawIDToken != "" {
 		// 验证 ID Token
-		v := provider.Verifier(&oidc.Config{ClientID: oauthConfig.ClientID})
+		v := provider.VerifierContext(ctx, &oidc.Config{ClientID: oauthConfig.ClientID})
 		idToken, err2 := v.Verify(ctx, rawIDToken)
 		if err2 != nil {
 			Logger.Warn("IdTokenVerifyError: ", err2)
@@ -375,9 +391,9 @@ func (os *OauthService) callbackBase(oauthConfig *oauth2.Config, provider *oidc.
 }
 
 // githubCallback github回调
-func (os *OauthService) githubCallback(oauthConfig *oauth2.Config, provider *oidc.Provider, code, verifier, nonce string) (error, *model.OauthUser) {
+func (os *OauthService) githubCallback(oauthConfig *oauth2.Config, provider *oidc.Provider, httpClient *http.Client, code, verifier, nonce string) (error, *model.OauthUser) {
 	var user = &model.GithubUser{}
-	err, client := os.callbackBase(oauthConfig, provider, code, verifier, nonce, user)
+	err, client := os.callbackBase(oauthConfig, provider, httpClient, code, verifier, nonce, user)
 	if err != nil {
 		return err, nil
 	}
@@ -389,9 +405,9 @@ func (os *OauthService) githubCallback(oauthConfig *oauth2.Config, provider *oid
 }
 
 // linuxdoCallback linux.do回调
-func (os *OauthService) linuxdoCallback(oauthConfig *oauth2.Config, provider *oidc.Provider, code, verifier, nonce string) (error, *model.OauthUser) {
+func (os *OauthService) linuxdoCallback(oauthConfig *oauth2.Config, provider *oidc.Provider, httpClient *http.Client, code, verifier, nonce string) (error, *model.OauthUser) {
 	var user = &model.LinuxdoUser{}
-	err, _ := os.callbackBase(oauthConfig, provider, code, verifier, nonce, user)
+	err, _ := os.callbackBase(oauthConfig, provider, httpClient, code, verifier, nonce, user)
 	if err != nil {
 		return err, nil
 	}
@@ -399,9 +415,9 @@ func (os *OauthService) linuxdoCallback(oauthConfig *oauth2.Config, provider *oi
 }
 
 // oidcCallback oidc回调, 通过code获取用户信息
-func (os *OauthService) oidcCallback(oauthConfig *oauth2.Config, provider *oidc.Provider, code, verifier, nonce string) (error, *model.OauthUser) {
+func (os *OauthService) oidcCallback(oauthConfig *oauth2.Config, provider *oidc.Provider, httpClient *http.Client, code, verifier, nonce string) (error, *model.OauthUser) {
 	var user = &model.OidcUser{}
-	if err, _ := os.callbackBase(oauthConfig, provider, code, verifier, nonce, user); err != nil {
+	if err, _ := os.callbackBase(oauthConfig, provider, httpClient, code, verifier, nonce, user); err != nil {
 		return err, nil
 	}
 	return nil, user.ToOauthUser()
@@ -414,14 +430,21 @@ func (os *OauthService) Callback(code, verifier, op, nonce string) (err error, o
 	if err != nil {
 		return err, nil, identity
 	}
+	httpClient, err := oauthHTTPClient(oauthInfo.ProxyURL)
+	if err != nil {
+		return err, nil, identity
+	}
+	if httpClient != oauthDirectClient {
+		defer httpClient.CloseIdleConnections()
+	}
 	oauthType := oauthInfo.OauthType
 	switch oauthType {
 	case model.OauthTypeGithub:
-		err, oauthUser = os.githubCallback(oauthConfig, provider, code, verifier, nonce)
+		err, oauthUser = os.githubCallback(oauthConfig, provider, httpClient, code, verifier, nonce)
 	case model.OauthTypeLinuxdo:
-		err, oauthUser = os.linuxdoCallback(oauthConfig, provider, code, verifier, nonce)
+		err, oauthUser = os.linuxdoCallback(oauthConfig, provider, httpClient, code, verifier, nonce)
 	case model.OauthTypeOidc, model.OauthTypeGoogle:
-		err, oauthUser = os.oidcCallback(oauthConfig, provider, code, verifier, nonce)
+		err, oauthUser = os.oidcCallback(oauthConfig, provider, httpClient, code, verifier, nonce)
 	default:
 		return errors.New("unsupported OAuth type"), nil, identity
 	}
@@ -437,12 +460,12 @@ func (os *OauthService) UserThirdInfo(op string, openId string) *model.UserThird
 // BindOauthUser: Bind third party account
 func (os *OauthService) BindOauthUser(userId uint, oauthUser *model.OauthUser, op string, identity OauthProviderIdentity) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var user model.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&user, userId).Error; err != nil {
-			return err
-		}
 		config, err := lockVerifiedOauthProvider(tx, op, identity)
 		if err != nil {
+			return err
+		}
+		var user model.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&user, userId).Error; err != nil {
 			return err
 		}
 		var count int64
@@ -460,13 +483,14 @@ func (os *OauthService) BindOauthUser(userId uint, oauthUser *model.OauthUser, o
 
 // UnBindOauthUser: Unbind third party account
 func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, loginBanned bool) error {
-	var email, directoryEmail string
+	var cfg model.LdapSetting
+	var email string
 	var directoryValues *model.User
 	var useLocalPassword, localAdminFallback bool
-	unbind := func(tx *gorm.DB) error {
+	unbind := func(tx *gorm.DB, checked *ldapRecheckRequired) error {
 		var user model.User
 		// Serialize unbinding even when two requests remove different providers.
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "email", "password", "status", "is_admin", "ldap_synced").First(&user, userId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userId).Error; err != nil {
 			return err
 		}
 		localAdminFallback = user.Password != "" && !user.LdapSynced && user.IsAdmin != nil && *user.IsAdmin
@@ -478,12 +502,12 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 			return gorm.ErrRecordNotFound
 		}
 		if user.Email != "" && user.Password != "" && AllService.UserService.CheckUserEnable(&user) {
-			if useLocalPassword && user.Email == email {
+			if useLocalPassword && localAdminFallback && user.Email == email {
 				valid, _, err := utils.VerifyPassword(user.Password, loginPassword)
 				if err == nil && valid {
 					return nil
 				}
-			} else if !Config.Ldap.Enable || !Config.Ldap.User.Sync {
+			} else if !cfg.Enable {
 				emptyPassword, _, err := utils.VerifyPassword(user.Password, "")
 				if err == nil && !emptyPassword {
 					return nil
@@ -500,37 +524,39 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		if remaining > 0 {
 			return nil
 		}
-		if Config.Ldap.Enable && directoryEmail != "" && user.Email == email {
+		if cfg.Enable && directoryValues != nil && user.Email == email && directoryValues.Email == user.Email {
 			// LDAP login maps the returned directory email to the local account.
-			var mapped model.User
-			err := tx.Select("id", "status").Where("email = ?", directoryEmail).First(&mapped).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-			if mapped.Id == userId {
-				if directoryValues != nil {
-					// Verify the login write without changing the account's profile or role.
-					if err := tx.Exec("SAVEPOINT ldap_sync_check").Error; err != nil {
-						return ErrLdapUnbindVerificationFailed
-					}
-					if err := syncLdapUser(tx, &mapped, directoryValues); err != nil {
-						return ErrLdapUnbindVerificationFailed
-					}
-					if err := tx.Exec("ROLLBACK TO SAVEPOINT ldap_sync_check").Error; err != nil {
-						return ErrLdapUnbindVerificationFailed
-					}
-				}
-				if !AllService.UserService.CheckUserEnable(&mapped) {
+			enabled := AllService.UserService.CheckUserEnable(&user)
+			if cfg.User.Sync || !user.LdapSynced {
+				// Verify the same write used by LDAP login, then discard it.
+				if err := tx.Exec("SAVEPOINT ldap_sync_check").Error; err != nil {
 					return ErrLdapUnbindVerificationFailed
 				}
-				return nil
+				if err := updateLdapUser(tx, &user, directoryValues, checked, cfg.User.Sync); err != nil {
+					return errors.Join(ErrLdapUnbindVerificationFailed, err)
+				}
+				enabled = AllService.UserService.CheckUserEnable(&user)
+				if err := tx.Exec("ROLLBACK TO SAVEPOINT ldap_sync_check").Error; err != nil {
+					return ErrLdapUnbindVerificationFailed
+				}
 			}
+			if !enabled {
+				return ErrLdapUnbindVerificationFailed
+			}
+			return nil
 		}
 		email = user.Email
 		return ErrLastLoginMethod
 	}
-	err := DB.Transaction(unbind)
-	if !errors.Is(err, ErrLastLoginMethod) || email == "" || !Config.Ldap.Enable {
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		cfg, err = lockLdapSetting(tx, clause.LockingStrengthUpdate)
+		if err != nil {
+			return err
+		}
+		return unbind(tx, nil)
+	})
+	if !errors.Is(err, ErrLastLoginMethod) || email == "" || !cfg.Enable {
 		return err
 	}
 	if loginPassword == "" {
@@ -540,34 +566,36 @@ func (os *OauthService) UnBindOauthUser(userId uint, op, loginPassword string, l
 		return ErrLdapUnbindRateLimited
 	}
 	// Query the directory after rollback so a slow directory cannot hold database locks.
-	directory := &LdapService{deadline: time.Now().Add(5 * time.Second)}
-	ldapUser, ldapErr := directory.loginUser(email, loginPassword)
+	directory := newLdapRequest()
+	ldapUser, ldapErr := directory.loginUser(&cfg, email, loginPassword)
 	if ldapErr != nil {
-		unavailable := errors.Is(ldapErr, ErrLdapConnectFailed) ||
-			errors.Is(ldapErr, ErrLdapBindService) ||
-			errors.Is(ldapErr, ErrLdapSearchFailed) ||
-			errors.Is(ldapErr, ErrLdapTlsFailed)
-		independentLocalAdmin := errors.Is(ldapErr, ErrLdapUserNotFound) && localAdminFallback
-		if !localAdminFallback || (!unavailable && !independentLocalAdmin) {
+		if !localAdminFallback || !ldapAllowsLocalAdminFallback(ldapErr) {
 			return ErrLdapUnbindVerificationFailed
 		}
-		// Only an unavailable directory may fall back to the local password.
 		useLocalPassword = true
 	} else {
-		if ldapUser.Email == "" || AllService.UserService.InfoByEmail(ldapUser.Email).Id != userId {
+		if ldapUser.mappedEmail() != email {
 			return ErrLdapUnbindVerificationFailed
 		}
-		if Config.Ldap.User.Sync {
-			directoryValues, err = directory.localUserValues(&Config.Ldap, ldapUser)
+		if cfg.User.Sync {
+			directoryValues, err = directory.localUserValues(&cfg, ldapUser)
 			if err != nil {
 				return ErrLdapUnbindVerificationFailed
 			}
+		} else {
+			directoryValues = ldapUser.ToUser(nil)
 		}
-		directoryEmail = strings.ToLower(strings.TrimSpace(ldapUser.Email))
 	}
 
-	err = DB.Transaction(unbind)
-	if errors.Is(err, ErrLastLoginMethod) {
+	err = withLdapRecheck(&cfg, ldapUser, directoryValues, func(checked *ldapRecheckRequired) error {
+		return DB.Transaction(func(tx *gorm.DB) error {
+			if err := lockLdapRevision(tx, cfg.Revision, clause.LockingStrengthUpdate); err != nil {
+				return err
+			}
+			return unbind(tx, checked)
+		})
+	})
+	if errors.Is(err, ErrLastLoginMethod) || errors.Is(err, ErrLdapSettingsChanged) || errors.Is(err, ErrLdapToLocalUserFailed) {
 		return ErrLdapUnbindVerificationFailed
 	}
 	return err
@@ -669,39 +697,33 @@ func (os *OauthService) Delete(oauthInfo *model.Oauth) error {
 }
 
 // Update 更新
-func (os *OauthService) Update(oauthInfo *model.Oauth, updateScopes bool) error {
+func (os *OauthService) Update(id uint, credentialRevision string, apply func(*model.Oauth)) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var current model.Oauth
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("op", "oauth_type", "issuer", "client_id").First(&current, oauthInfo.Id).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, id).Error; err != nil {
 			return err
 		}
-		if oauthInfo.Op == "" {
-			oauthInfo.Op = current.Op
+		oauthInfo := current
+		apply(&oauthInfo)
+		if oauthInfo.Op != current.Op {
+			return errors.New("OAuth provider identifier cannot be changed")
 		}
-		suppliedOp := oauthInfo.Op
 		if err := oauthInfo.FormatOauthInfo(); err != nil {
 			return err
 		}
-		if suppliedOp != current.Op || oauthInfo.Op != current.Op {
+		if oauthInfo.Op != current.Op {
 			return errors.New("OAuth provider identifier cannot be changed")
 		}
-		fields := []string{"oauth_type", "client_id", "client_secret", "pkce_enable", "pkce_method"}
-		if oauthInfo.Issuer != "" {
-			fields = append(fields, "issuer")
+		identityChanged := oauthProviderIdentity(&oauthInfo) != oauthProviderIdentity(&current)
+		currentRevision := current.CredentialsRevision()
+		if oauthInfo.CredentialsRevision() != currentRevision && credentialRevision != currentRevision {
+			return ErrOauthCredentialsChanged
 		}
-		if oauthInfo.AutoRegister != nil {
-			fields = append(fields, "auto_register")
-		}
-		if updateScopes {
-			fields = append(fields, "scopes")
-		}
-		identityChanged := oauthProviderIdentity(oauthInfo) != oauthProviderIdentity(&current)
-		update := tx.Model(oauthInfo).Select(fields)
+		update := tx.Model(&current).Select("oauth_type", "client_id", "client_secret", "issuer", "proxy_url", "scopes", "auto_register", "pkce_enable", "pkce_method")
 		if identityChanged {
 			update = update.Where("NOT EXISTS (?)", oauthProviderBindings(tx, current.Op))
 		}
-		result := update.Updates(oauthInfo)
+		result := update.Updates(&oauthInfo)
 		if result.Error == nil && identityChanged && result.RowsAffected == 0 {
 			return ErrOauthIdentityBound
 		}
@@ -714,7 +736,11 @@ func oauthProviderBindings(db *gorm.DB, op string) *gorm.DB {
 }
 
 func configuredOauthProviders(db *gorm.DB) *gorm.DB {
-	return db.Model(&model.Oauth{}).
+	providers := db.Model(&model.Oauth{})
+	if OauthRedirectURL() == "" {
+		return providers.Where("1 = 0")
+	}
+	return providers.
 		Where("op <> '' AND LOWER(op) <> ? AND oauth_type IN ? AND client_id <> '' AND client_secret <> ''", model.OauthTypeWebauth, model.OauthProviderTypes()).
 		Where("(oauth_type NOT IN ? OR issuer <> '')", []string{model.OauthTypeGoogle, model.OauthTypeOidc})
 }

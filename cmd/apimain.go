@@ -22,6 +22,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/spf13/cobra"
+	"gorm.io/gorm/clause"
 )
 
 const DatabaseVersion = 273
@@ -284,6 +285,9 @@ func CreateDatabaseSchema() error {
 		if err := userDB.Exec("COMMENT ON COLUMN users.ldap_synced IS '是否由 LDAP 目录映射'").Error; err != nil {
 			return err
 		}
+		if err := userDB.Exec("COMMENT ON COLUMN users.ldap_permission_revision IS '已确认 LDAP 撤权的并发校验修订号'").Error; err != nil {
+			return err
+		}
 	}
 	if err := global.DB.AutoMigrate(
 		&model.UserToken{},
@@ -299,6 +303,42 @@ func CreateDatabaseSchema() error {
 		&model.AddressBookCollection{},
 		&model.ServerCmd{},
 	); err != nil {
+		return err
+	}
+	ldapDB := global.DB
+	const ldapComment = "'LDAP 目录登录与用户映射配置'"
+	if ldapDB.Dialector.Name() == "mysql" {
+		ldapDB = ldapDB.Set("gorm:table_options", " COMMENT = "+ldapComment)
+	}
+	if err := ldapDB.AutoMigrate(&model.LdapSetting{}); err != nil {
+		return err
+	}
+	if ldapDB.Dialector.Name() == "postgres" {
+		if err := ldapDB.Exec("COMMENT ON TABLE ldap_settings IS " + ldapComment).Error; err != nil {
+			return err
+		}
+	}
+	verificationDB := global.DB
+	const verificationComment = "'首次 LDAP 管理员账号的待复核记录'"
+	if verificationDB.Dialector.Name() == "mysql" {
+		verificationDB = verificationDB.Set("gorm:table_options", " COMMENT = "+verificationComment)
+	}
+	if err := verificationDB.AutoMigrate(&model.LdapAccountVerification{}); err != nil {
+		return err
+	}
+	if verificationDB.Dialector.Name() == "postgres" {
+		if err := verificationDB.Exec("COMMENT ON TABLE ldap_account_verifications IS " + verificationComment).Error; err != nil {
+			return err
+		}
+		if err := verificationDB.Exec("COMMENT ON COLUMN ldap_account_verifications.email IS '待复核 LDAP 账号的主邮箱'").Error; err != nil {
+			return err
+		}
+		if err := verificationDB.Exec("COMMENT ON COLUMN ldap_account_verifications.revision IS 'LDAP 账号复核的随机修订标识'").Error; err != nil {
+			return err
+		}
+	}
+	if err := ldapDB.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&model.LdapSetting{Id: model.LdapSettingID, TlsVerify: true}).Error; err != nil {
 		return err
 	}
 	platformDB := global.DB

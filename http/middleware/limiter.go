@@ -9,20 +9,20 @@ import (
 )
 
 func Limiter() gin.HandlerFunc {
-	return limitLogin(func(c *gin.Context, message string) {
+	return limitLogin("Banned", func(c *gin.Context, message string) {
 		response.Fail(c, http.StatusLocked, message)
 	})
 }
 
 func NativeLoginLimiter() gin.HandlerFunc {
-	return limitLogin(response.Error)
+	return limitLogin("NativeLoginTemporarilyLimited", response.Error)
 }
 
-func limitLogin(reject func(*gin.Context, string)) gin.HandlerFunc {
+func limitLogin(message string, reject func(*gin.Context, string)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		banned, _ := global.LoginLimiter.CheckSecurityStatus(c.ClientIP())
 		if banned {
-			reject(c, response.TranslateMsg(c, "Banned"))
+			reject(c, response.TranslateMsg(c, message))
 			c.Abort()
 			return
 		}

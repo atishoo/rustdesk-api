@@ -1,7 +1,10 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"strconv"
@@ -49,9 +52,35 @@ type Oauth struct {
 	AutoRegister *bool  `json:"auto_register"`
 	Scopes       string `json:"scopes"`
 	Issuer       string `json:"issuer"`
+	ProxyURL     string `json:"proxy_url" gorm:"type:text;comment:OAuth提供商出站代理地址"`
 	PkceEnable   *bool  `json:"pkce_enable"`
 	PkceMethod   string `json:"pkce_method"`
+	// 编辑时用于核对客户端凭据是否已变更。
+	CredentialRevision string `json:"credential_revision,omitempty" gorm:"-"`
 	TimeModel
+}
+
+func (oa *Oauth) CredentialsRevision() string {
+	credentials, _ := json.Marshal([4]string{oa.OauthType, oa.Issuer, oa.ClientId, oa.ClientSecret})
+	return fmt.Sprintf("%x", sha256.Sum256(credentials))
+}
+
+func ParseOauthProxyURL(value string) (*url.URL, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	proxy, err := url.Parse(value)
+	if err != nil || (proxy.Scheme != "http" && proxy.Scheme != "https") || proxy.Hostname() == "" ||
+		(proxy.Path != "" && proxy.Path != "/") || strings.ContainsAny(value, "?#") {
+		return nil, errors.New("OAuth proxy URL must be an absolute HTTP or HTTPS URL without a non-root path, query, or fragment")
+	}
+	if port := proxy.Port(); port != "" {
+		if number, err := strconv.ParseUint(port, 10, 16); err != nil || number == 0 {
+			return nil, errors.New("OAuth proxy port must be between 1 and 65535")
+		}
+	}
+	return proxy, nil
 }
 
 // Helper function to format oauth info, it's used in the update and create method
@@ -86,13 +115,20 @@ func (oa *Oauth) FormatOauthInfo() error {
 	if oauthType == OauthTypeGoogle && issuer == "" {
 		issuer = IssuerGoogle
 	}
-	if oauthType == OauthTypeOidc || oauthType == OauthTypeGoogle {
+	if issuer != "" || oauthType == OauthTypeOidc || oauthType == OauthTypeGoogle {
 		issuerURL, err := url.Parse(issuer)
 		if err != nil || (issuerURL.Scheme != "http" && issuerURL.Scheme != "https") ||
 			issuerURL.Hostname() == "" || issuerURL.User != nil || strings.ContainsAny(issuer, "?#") {
 			return errors.New("OIDC issuer must be an absolute HTTP or HTTPS URL without user information, a query, or a fragment")
 		}
 		oa.Issuer = issuer
+	}
+	if proxyURL, err := ParseOauthProxyURL(oa.ProxyURL); err != nil {
+		return err
+	} else if proxyURL != nil {
+		oa.ProxyURL = proxyURL.String()
+	} else {
+		oa.ProxyURL = ""
 	}
 	if oa.PkceEnable == nil {
 		oa.PkceEnable = new(bool)
@@ -196,6 +232,7 @@ func (lu *LinuxdoUser) ToOauthUser() *OauthUser {
 }
 
 type OauthList struct {
-	Oauths []*Oauth `json:"list"`
+	Oauths      []*Oauth `json:"list"`
+	RedirectURL string   `json:"redirect_url"`
 	Pagination
 }

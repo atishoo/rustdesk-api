@@ -34,7 +34,6 @@ func (l *Login) Login(c *gin.Context) {
 
 	f := &api.LoginForm{}
 	err := c.ShouldBindJSON(f)
-	//fmt.Println(f)
 	if err != nil {
 		loginLimiter.RecordFailedAttempt(clientIp)
 		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "ParamsError", c.RemoteIP(), c.ClientIP()))
@@ -49,9 +48,9 @@ func (l *Login) Login(c *gin.Context) {
 		response.Error(c, errList[0])
 		return
 	}
-	u := service.AllService.UserService.InfoByEmailPassword(f.Email, f.Password)
+	u, password := service.AllService.UserService.InfoByEmailPassword(f.Email, f.Password)
 
-	if u.Id == 0 {
+	if u == nil {
 		loginLimiter.RecordFailedAttempt(clientIp)
 		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "EmailOrPasswordError", c.RemoteIP(), c.ClientIP()))
 		response.Error(c, response.TranslateMsg(c, "EmailOrPasswordError"))
@@ -70,14 +69,13 @@ func (l *Login) Login(c *gin.Context) {
 	}
 
 	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
-		UserId:   u.Id,
 		Client:   f.DeviceInfo.Type,
 		DeviceId: f.Id,
 		Uuid:     f.Uuid,
 		Ip:       c.ClientIP(),
 		Type:     model.LoginLogTypeAccount,
 		Platform: f.DeviceInfo.Os,
-	}, true)
+	}, true, password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse{Error: response.TranslateMsg(c, "SystemError")})
 		return
@@ -86,7 +84,7 @@ func (l *Login) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResp.LoginRes{
 		AccessToken: ut.Token,
 		Type:        "access_token",
-		User:        *(&apiResp.UserPayload{}).FromUser(u),
+		User:        *(&apiResp.UserPayload{}).FromCurrentUser(u),
 	})
 }
 

@@ -3,6 +3,7 @@ package api
 import "github.com/lejianwen/rustdesk-api/v2/model"
 
 type UserPayload struct {
+	Id       uint                   `json:"id,omitempty"`
 	Nickname string                 `json:"nickname"`
 	Avatar   string                 `json:"avatar"`
 	Email    string                 `json:"email"`
@@ -20,6 +21,11 @@ func (up *UserPayload) FromUser(user *model.User) *UserPayload {
 	up.Status = int(user.Status)
 	up.Info = map[string]interface{}{}
 	return up
+}
+
+func (up *UserPayload) FromCurrentUser(user *model.User) *UserPayload {
+	up.Id = user.Id
+	return up.FromUser(user)
 }
 
 /*

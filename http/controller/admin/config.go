@@ -1,16 +1,29 @@
 package admin
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
-	"os"
-	"strings"
 )
 
 type Config struct {
+}
+
+type ldapConfigForm struct {
+	Revision      *uint64               `json:"revision"`
+	Enable        *bool                 `json:"enable"`
+	Url           string                `json:"url"`
+	TlsCaFile     string                `json:"tls_ca_file"`
+	TlsVerify     *bool                 `json:"tls_verify"`
+	BaseDn        string                `json:"base_dn"`
+	BindDn        string                `json:"bind_dn"`
+	BindPassword  *string               `json:"bind_password"`
+	AdminPassword string                `json:"admin_password"`
+	User          model.LdapUserSetting `json:"user"`
 }
 
 // ServerConfig 卡皮远控服务配置
@@ -74,6 +87,61 @@ func (co *Config) UpdateAppConfig(c *gin.Context) {
 	response.Success(c, gin.H{"register": *form.Register})
 }
 
+// LdapConfig returns the persisted LDAP directory configuration.
+func (co *Config) LdapConfig(c *gin.Context) {
+	setting, err := service.GetLdapSetting()
+	if err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, err.Error()))
+		return
+	}
+	response.Success(c, gin.H{
+		"revision":          setting.Revision,
+		"enable":            setting.Enable,
+		"url":               setting.Url,
+		"tls_ca_file":       setting.TlsCaFile,
+		"tls_verify":        setting.TlsVerify,
+		"base_dn":           setting.BaseDn,
+		"bind_dn":           setting.BindDn,
+		"bind_password_set": setting.BindPassword != "",
+		"user":              setting.User,
+	})
+}
+
+// UpdateLdapConfig persists and activates the LDAP directory configuration.
+func (co *Config) UpdateLdapConfig(c *gin.Context) {
+	var form ldapConfigForm
+	if err := c.ShouldBindJSON(&form); err != nil || form.Enable == nil || form.Revision == nil || form.TlsVerify == nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	setting := model.LdapSetting{
+		Revision:  *form.Revision,
+		Enable:    *form.Enable,
+		Url:       form.Url,
+		TlsCaFile: form.TlsCaFile,
+		TlsVerify: *form.TlsVerify,
+		BaseDn:    form.BaseDn,
+		BindDn:    form.BindDn,
+		User:      form.User,
+	}
+	admin := service.AllService.UserService.CurUser(c)
+	if err := service.SaveLdapSetting(setting, form.BindPassword, admin, form.AdminPassword); err != nil {
+		message := "OperationFailed"
+		code := 101
+		switch err {
+		case service.ErrLdapSettingsChanged:
+			code = http.StatusConflict
+			message = err.Error()
+		case service.ErrLdapSettingInvalid, service.ErrLdapBindingPasswordRequired, service.ErrLdapSettingsTableMissing, service.ErrLdapEnableAttrPairRequired,
+			service.ErrLdapLocalAdminRequired, service.ErrLdapDirectoryUnavailable:
+			message = err.Error()
+		}
+		response.Fail(c, code, response.TranslateMsg(c, message))
+		return
+	}
+	response.Success(c, gin.H{"enable": setting.Enable})
+}
+
 // AdminConfig ADMIN服务配置
 // @Tags ADMIN
 // @Summary ADMIN服务配置
@@ -85,38 +153,5 @@ func (co *Config) UpdateAppConfig(c *gin.Context) {
 // @Router /admin/config/admin [get]
 // @Security token
 func (co *Config) AdminConfig(c *gin.Context) {
-
-	u := &model.User{}
-	token := c.GetHeader("api-token")
-	if token != "" {
-		u, _ = service.AllService.UserService.InfoByAccessToken(token)
-		if !service.AllService.UserService.CheckUserEnable(u) {
-			u.Id = 0
-		}
-	}
-
-	if u.Id == 0 {
-		response.Success(c, &gin.H{
-			"title": global.Config.Admin.Title,
-		})
-		return
-	}
-
-	hello := global.Config.Admin.Hello
-	if hello == "" {
-		helloFile := global.Config.Admin.HelloFile
-		if helloFile != "" {
-			b, err := os.ReadFile(helloFile)
-			if err == nil && len(b) > 0 {
-				hello = string(b)
-			}
-		}
-	}
-
-	// Replace the nickname in the welcome message.
-	hello = strings.Replace(hello, "{{nickname}}", u.Nickname, -1)
-	response.Success(c, &gin.H{
-		"title": global.Config.Admin.Title,
-		"hello": hello,
-	})
+	response.Success(c, &gin.H{"title": global.Config.Admin.Title})
 }

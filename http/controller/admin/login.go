@@ -63,9 +63,9 @@ func (ct *Login) Login(c *gin.Context) {
 		}
 	}
 
-	u := service.AllService.UserService.InfoByEmailPassword(f.Email, f.Password)
+	u, password := service.AllService.UserService.InfoByEmailPassword(f.Email, f.Password)
 
-	if u.Id == 0 {
+	if u == nil {
 		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "EmailOrPasswordError", c.RemoteIP(), clientIp))
 		loginLimiter.RecordFailedAttempt(clientIp)
 		if _, needCaptcha = loginLimiter.CheckSecurityStatus(clientIp); needCaptcha {
@@ -86,13 +86,12 @@ func (ct *Login) Login(c *gin.Context) {
 	}
 
 	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
-		UserId:   u.Id,
 		Client:   model.LoginLogClientWebAdmin,
 		Uuid:     "", //must be empty
 		Ip:       clientIp,
 		Type:     model.LoginLogTypeAccount,
 		Platform: f.Platform,
-	}, false)
+	}, false, password)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "SystemError"))
 		return

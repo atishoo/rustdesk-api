@@ -38,6 +38,6 @@ type User struct {
 // @Security token
 func (u *User) Info(c *gin.Context) {
 	user := service.AllService.UserService.CurUser(c)
-	up := (&apiResp.UserPayload{}).FromUser(user)
+	up := (&apiResp.UserPayload{}).FromCurrentUser(user)
 	c.JSON(http.StatusOK, up)
 }

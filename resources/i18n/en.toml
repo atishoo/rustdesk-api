@@ -126,6 +126,30 @@ other = "Bind success."
 description = "Unbinding would remove the last login method."
 other = "Make sure you can sign in with a password, or bind another login provider before unbinding this account."
 
+[LdapSettingInvalid]
+other = "Check the format of the LDAP address and user filter."
+
+[LdapEnableAttrPairRequired]
+other = "Fill in both the enabled attribute and its value, or leave both blank."
+
+[LdapBindingPasswordRequired]
+other = "LDAP requires a bind DN and password. When changing the LDAP address or bind DN, re-enter the password or disable LDAP and clear the stored password."
+
+[LdapSettingsTableMissing]
+other = "The LDAP settings table is missing. Apply the schema in the deployment documentation and restart the API."
+
+[LdapLocalAdminRequired]
+other = "Sign in as a local administrator outside the LDAP user search and enter their current password."
+
+[LdapLastLocalAdmin]
+other = "Keep at least one administrator outside the directory who can sign in with a local password while LDAP is enabled."
+
+[LdapSettingsChanged]
+other = "LDAP settings changed. Refresh and try again."
+
+[LdapDirectoryUnavailable]
+other = "LDAP bind or user search failed. Check the directory URL, bind credentials, and user search settings."
+
 [LdapUnbindPasswordRequired]
 other = "Enter the password you use to sign in before unbinding."
 
@@ -134,6 +158,9 @@ other = "Unable to verify password sign-in. This account remains linked."
 
 [LdapUnbindRateLimited]
 other = "Password verification is temporarily limited. Please try again later."
+
+[OauthCredentialsChanged]
+other = "OAuth client credentials have changed. Reload the configuration before editing."
 
 [OauthIdentityBound]
 other = "A login provider with linked accounts cannot be deleted or have its identity settings changed."
@@ -250,6 +277,9 @@ other = "Cannot share to self."
 description = "Banned."
 one = "Banned."
 other = "Banned."
+
+[NativeLoginTemporarilyLimited]
+other = "Too many sign-in attempts from this network. Try again later."
 
 [RegisterSuccessWaitAdminConfirm]
 description = "Register success, wait admin confirm."

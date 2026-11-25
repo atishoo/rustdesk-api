@@ -4378,11 +4378,6 @@ const docTemplateadmin = `{
         },
         "admin.OauthForm": {
             "type": "object",
-            "required": [
-                "client_id",
-                "client_secret",
-                "oauth_type"
-            ],
             "properties": {
                 "auto_register": {
                     "type": "boolean"
@@ -4391,6 +4386,10 @@ const docTemplateadmin = `{
                     "type": "string"
                 },
                 "client_secret": {
+                    "type": "string"
+                },
+                "credential_revision": {
+                    "description": "修改客户端凭据时提交列表或详情返回的凭据修订号。",
                     "type": "string"
                 },
                 "id": {
@@ -4409,6 +4408,9 @@ const docTemplateadmin = `{
                     "type": "boolean"
                 },
                 "pkce_method": {
+                    "type": "string"
+                },
+                "proxy_url": {
                     "type": "string"
                 },
                 "scopes": {
@@ -5061,6 +5063,10 @@ const docTemplateadmin = `{
                 "created_at": {
                     "type": "string"
                 },
+                "credential_revision": {
+                    "description": "编辑时用于核对客户端凭据是否已变更。",
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -5077,6 +5083,9 @@ const docTemplateadmin = `{
                     "type": "boolean"
                 },
                 "pkce_method": {
+                    "type": "string"
+                },
+                "proxy_url": {
                     "type": "string"
                 },
                 "scopes": {
@@ -5101,6 +5110,9 @@ const docTemplateadmin = `{
                 },
                 "page_size": {
                     "type": "integer"
+                },
+                "redirect_url": {
+                    "type": "string"
                 },
                 "total": {
                     "type": "integer"

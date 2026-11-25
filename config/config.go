@@ -27,8 +27,6 @@ type App struct {
 }
 type Admin struct {
 	Title           string `mapstructure:"title"`
-	Hello           string `mapstructure:"hello"`
-	HelloFile       string `mapstructure:"hello-file"`
 	IdServerPort    int    `mapstructure:"id-server-port"`
 	RelayServerPort int    `mapstructure:"relay-server-port"`
 }
@@ -54,8 +52,6 @@ type Config struct {
 	Oss        Oss
 	Jwt        Jwt
 	Capylink   Capylink
-	Proxy      Proxy
-	Ldap       Ldap
 }
 
 func (a *Admin) Init() {

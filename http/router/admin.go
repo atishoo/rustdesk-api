@@ -204,6 +204,8 @@ func ConfigBind(rg *gin.RouterGroup) {
 	aR.GET("/server", rs.ServerConfig)
 	aR.GET("/app", rs.AppConfig)
 	aR.POST("/app", middleware.AdminPrivilege(), rs.UpdateAppConfig)
+	aR.GET("/ldap", middleware.AdminPrivilege(), rs.LdapConfig)
+	aR.POST("/ldap", middleware.AdminPrivilege(), rs.UpdateLdapConfig)
 
 }
 

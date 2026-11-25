@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,11 @@ import (
 )
 
 type UserService struct {
+}
+
+type PasswordLogin struct {
+	settings *model.LdapSetting
+	ldapUser *LdapUser
 }
 
 // InfoById 根据用户id取用户信息
@@ -38,47 +44,59 @@ func (us *UserService) InfoByOpenid(openid string) *model.User {
 	return u
 }
 
-// InfoByEmailPassword 根据邮箱密码取用户信息
-func (us *UserService) InfoByEmailPassword(email, password string) *model.User {
+// InfoByEmailPassword verifies the credentials and prepares the user for Login.
+func (us *UserService) InfoByEmailPassword(email, password string) (*model.User, *PasswordLogin) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if !ValidateEmailAddress(email) || password == "" {
-		return &model.User{}
+		return nil, nil
 	}
-	if Config.Ldap.Enable {
-		u, err := AllService.LdapService.Authenticate(email, password)
+	cfg, err := GetLdapSetting()
+	if err != nil {
+		Logger.Errorf("LDAP settings lookup failed, %v", err)
+		return nil, nil
+	}
+	if cfg.Enable {
+		directory := newLdapRequest()
+		ldapUser, err := directory.loginUser(&cfg, email, password)
 		if err == nil {
-			return u
+			user, err := directory.prepareLdapUser(&cfg, ldapUser)
+			if err != nil {
+				Logger.Errorf("LDAP user preparation failed, %v", err)
+				return nil, nil
+			}
+			if !cfg.User.Sync {
+				if err := revokeLdapAccess(&cfg, ldapUser); err != nil {
+					Logger.Errorf("LDAP revocation failed, %v", err)
+					return nil, nil
+				}
+			}
+			return user, &PasswordLogin{settings: &cfg, ldapUser: ldapUser}
 		}
 		Logger.Errorf("LDAP authentication failed, %v", err)
 		// Keep an independent local administrator usable when the directory is
 		// unavailable; explicit LDAP credential or policy failures must not fall
 		// back to a local password.
-		local := &model.User{}
-		DB.Select("id", "password", "is_admin", "ldap_synced").Where("email = ?", email).First(local)
-		localAdminFallback := local.Id > 0 && local.Password != "" && !local.LdapSynced && local.IsAdmin != nil && *local.IsAdmin
-		unavailable := errors.Is(err, ErrLdapConnectFailed) ||
-			errors.Is(err, ErrLdapBindService) ||
-			errors.Is(err, ErrLdapSearchFailed) ||
-			errors.Is(err, ErrLdapTlsFailed)
-		if !localAdminFallback || (!unavailable && !errors.Is(err, ErrLdapUserNotFound)) {
-			return &model.User{}
+		if !ldapAllowsLocalAdminFallback(err) {
+			return nil, nil
 		}
-		Logger.Warn("Fallback to local database")
 	}
 	u := &model.User{}
 	DB.Where("email = ?", email).First(u)
 	if u.Id == 0 {
-		return u
+		return nil, nil
+	}
+	if cfg.Enable && (u.LdapSynced || u.IsAdmin == nil || !*u.IsAdmin) {
+		return nil, nil
 	}
 	ok, newHash, err := utils.VerifyPassword(u.Password, password)
 	if err != nil || !ok {
-		return &model.User{}
+		return nil, nil
 	}
 	if newHash != "" {
 		DB.Model(u).Update("password", newHash)
 		u.Password = newHash
 	}
-	return u
+	return u, &PasswordLogin{settings: &cfg}
 }
 
 // InfoByAccesstoken 根据accesstoken取用户信息
@@ -111,16 +129,8 @@ func (us *UserService) GenerateToken(u *model.User) (string, int64) {
 }
 
 // Login 登录
-func (us *UserService) Login(u *model.User, llog *model.LoginLog, deviceSession bool) (*model.UserToken, error) {
-	token, expiresAt := us.GenerateToken(u)
-	if token == "" || expiresAt <= time.Now().Unix() {
-		return nil, errors.New("could not generate a usable session token")
-	}
-	session := model.UserToken{
-		UserId:    u.Id,
-		Token:     token,
-		ExpiredAt: expiresAt,
-	}
+func (us *UserService) Login(u *model.User, llog *model.LoginLog, deviceSession bool, password *PasswordLogin) (*model.UserToken, error) {
+	var session model.UserToken
 	details := *llog
 	if deviceSession {
 		session.DeviceId = details.DeviceId
@@ -129,32 +139,68 @@ func (us *UserService) Login(u *model.User, llog *model.LoginLog, deviceSession 
 			details.Client = model.LoginLogClientApp
 		}
 	}
+	var settings *model.LdapSetting
+	var directoryUser *LdapUser
+	if password != nil {
+		settings, directoryUser = password.settings, password.ldapUser
+	}
+	retryContention := directoryUser != nil || (session.DeviceId != "" && session.DeviceUuid != "")
 	for attempt := 1; ; attempt++ {
 		ut, loginLog := session, details
-		err := DB.Transaction(func(tx *gorm.DB) error {
-			// Match the device-first lock order used by reporting and logout.
-			if ut.DeviceId != "" || ut.DeviceUuid != "" {
-				if err := AllService.PeerService.bindDeviceUser(tx, ut.DeviceId, ut.DeviceUuid, u.Id); err != nil {
+		loginUser := u
+		err := withLdapRecheck(settings, directoryUser, u, func(checked *ldapRecheckRequired) error {
+			return DB.Transaction(func(tx *gorm.DB) error {
+				if password != nil {
+					if err := lockLdapRevision(tx, password.settings.Revision, clause.LockingStrengthShare); err != nil {
+						return err
+					}
+					if password.ldapUser != nil {
+						var err error
+						loginUser, err = mapLdapUser(tx, password.settings, u, checked)
+						if err != nil {
+							return errors.Join(ErrLdapToLocalUserFailed, err)
+						}
+						if !us.CheckUserEnable(loginUser) {
+							return ErrLdapUserDisabled
+						}
+					}
+				}
+				ut.UserId = loginUser.Id
+				ut.Token, ut.ExpiredAt = us.GenerateToken(loginUser)
+				if ut.Token == "" || ut.ExpiredAt <= time.Now().Unix() {
+					return errors.New("could not generate a usable session token")
+				}
+				// Match the device-before-session lock order used by reporting and logout.
+				if ut.DeviceId != "" || ut.DeviceUuid != "" {
+					if err := AllService.PeerService.bindDeviceUser(tx, ut.DeviceId, ut.DeviceUuid, loginUser.Id); err != nil {
+						return err
+					}
+				}
+				if err := tx.Create(&ut).Error; err != nil {
 					return err
 				}
-			}
-			if err := tx.Create(&ut).Error; err != nil {
-				return err
-			}
-			loginLog.UserTokenId = ut.Id
-			return tx.Create(&loginLog).Error
+				loginLog.UserId = loginUser.Id
+				loginLog.UserTokenId = ut.Id
+				return tx.Create(&loginLog).Error
+			})
 		})
 		if err == nil {
+			if loginUser != u {
+				*u = *loginUser
+			}
 			*llog = loginLog
 			return &ut, nil
 		}
-		// MySQL can roll back one of two concurrent claims for a new device ID.
-		var deadlock *mysql.MySQLError
-		if attempt == 3 || session.DeviceId == "" || session.DeviceUuid == "" ||
-			!errors.As(err, &deadlock) || deadlock.Number != 1213 {
+		// Device claims and LDAP account creation can contend on unique index gaps.
+		if attempt == 3 || !retryContention || !isMySQLDeadlock(err) {
 			return nil, err
 		}
 	}
+}
+
+func isMySQLDeadlock(err error) bool {
+	var deadlock *mysql.MySQLError
+	return errors.As(err, &deadlock) && deadlock.Number == 1213
 }
 
 // CurUser 获取当前用户
@@ -222,19 +268,29 @@ func (us *UserService) Create(u *model.User) error {
 	if u.Nickname == "" {
 		return errors.New("nickname is required")
 	}
-	ldapExists, err := us.IsEmailExistsLdap(u.Email)
+	cfg, err := GetLdapSetting()
+	if err != nil {
+		return err
+	}
+	ldapExists, err := AllService.LdapService.isEmailExists(&cfg, u.Email)
 	if err != nil {
 		return err
 	}
 	if us.InfoByEmail(u.Email).Id > 0 || ldapExists {
 		return errors.New("EmailExists")
 	}
-	u.Password, err = utils.EncryptPassword(u.Password)
-	if err != nil {
-		return err
+	if u.Password != "" {
+		u.Password, err = encryptPassword(u.Password)
+		if err != nil {
+			return err
+		}
 	}
-	res := DB.Create(u).Error
-	return res
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockLdapRevision(tx, cfg.Revision, clause.LockingStrengthUpdate); err != nil {
+			return err
+		}
+		return tx.Create(u).Error
+	})
 }
 
 // Logout 撤销当前令牌，并恢复相同设备上最新有效会话的归属。
@@ -305,14 +361,7 @@ func (us *UserService) latestDeviceSessionUser(tx *gorm.DB, deviceID, uuid model
 
 // Delete 删除用户和oauth信息
 func (us *UserService) Delete(u *model.User) error {
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		last, err := lastEnabledAdmin(tx, u.Id)
-		if err != nil {
-			return err
-		}
-		if last {
-			return errors.New("The last admin user cannot be deleted")
-		}
+	err := withAdminRemoval(u.Id, nil, "The last admin user cannot be deleted", func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "avatar").First(u, u.Id).Error; err != nil {
 			return err
 		}
@@ -342,6 +391,8 @@ func (us *UserService) Delete(u *model.User) error {
 
 // Update 更新
 func (us *UserService) Update(u *model.User, fields ...string) error {
+	var previous *model.User
+	var ldapSettings *model.LdapSetting
 	for _, field := range fields {
 		switch field {
 		case "email":
@@ -349,19 +400,24 @@ func (us *UserService) Update(u *model.User, fields ...string) error {
 			if !ValidateEmailAddress(u.Email) {
 				return errors.New("InvalidEmail")
 			}
-			current := us.InfoById(u.Id)
-			if current.Id > 0 && !strings.EqualFold(current.Email, u.Email) {
-				if current.LdapSynced {
+			previous = us.InfoById(u.Id)
+			cfg, err := GetLdapSetting()
+			if err != nil {
+				return err
+			}
+			ldapSettings = &cfg
+			if previous.Id > 0 && !strings.EqualFold(previous.Email, u.Email) {
+				if previous.LdapSynced {
 					return errors.New("LdapSyncedEmailCannotChange")
 				}
-				if Config.Ldap.Enable {
-					if _, err := AllService.LdapService.GetUserInfoByEmailLdap(current.Email); err == nil {
-						return errors.New("LdapSyncedEmailCannotChange")
-					} else if !errors.Is(err, ErrLdapUserNotFound) {
-						return err
-					}
+				ldapExists, err := AllService.LdapService.isEmailExists(&cfg, previous.Email)
+				if err != nil {
+					return err
 				}
-				ldapExists, err := us.IsEmailExistsLdap(u.Email)
+				if ldapExists {
+					return errors.New("LdapSyncedEmailCannotChange")
+				}
+				ldapExists, err = AllService.LdapService.isEmailExists(&cfg, u.Email)
 				if err != nil {
 					return err
 				}
@@ -378,8 +434,15 @@ func (us *UserService) Update(u *model.User, fields ...string) error {
 	}
 	update := func(tx *gorm.DB) error {
 		var current model.User
-		if err := tx.Select("id").Where("id = ?", u.Id).First(&current).Error; err != nil {
+		query := tx.Select("id")
+		if previous != nil {
+			query = tx.Select("id", "email", "ldap_synced").Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
+		}
+		if err := query.Where("id = ?", u.Id).First(&current).Error; err != nil {
 			return err
+		}
+		if previous != nil && (previous.Email != current.Email || previous.LdapSynced != current.LdapSynced) {
+			return errors.New("UserEmailChanged")
 		}
 		target := tx.Model(u)
 		if len(fields) != 0 {
@@ -387,16 +450,15 @@ func (us *UserService) Update(u *model.User, fields ...string) error {
 		}
 		return target.Updates(u).Error
 	}
-	if (u.IsAdmin == nil || *u.IsAdmin) && u.Status != model.COMMON_STATUS_DISABLED {
+	if (u.IsAdmin != nil && !*u.IsAdmin) || u.Status == model.COMMON_STATUS_DISABLED {
+		return withAdminRemoval(u.Id, ldapSettings, "The last admin user cannot be disabled or demoted", update)
+	}
+	if ldapSettings == nil {
 		return update(DB)
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		last, err := lastEnabledAdmin(tx, u.Id)
-		if err != nil {
+		if err := lockLdapRevision(tx, ldapSettings.Revision, clause.LockingStrengthUpdate); err != nil {
 			return err
-		}
-		if last {
-			return errors.New("The last admin user cannot be disabled or demoted")
 		}
 		return update(tx)
 	})
@@ -409,17 +471,15 @@ func (us *UserService) FlushToken(u *model.User) error {
 
 // UpdatePassword 更新密码
 func (us *UserService) UpdatePassword(u *model.User, password string) error {
-	var err error
-	u.Password, err = utils.EncryptPassword(password)
+	hash, err := encryptPassword(password)
 	if err != nil {
 		return err
 	}
-	err = DB.Model(u).Update("password", u.Password).Error
-	if err != nil {
+	if err := DB.Model(u).Update("password", hash).Error; err != nil {
 		return err
 	}
-	err = us.FlushToken(u)
-	return err
+	u.Password = hash
+	return us.FlushToken(u)
 }
 
 // IsAdmin 是否管理员
@@ -482,49 +542,80 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string, id
 		return errors.New("OauthEmailUnverified"), nil
 	}
 	oauthUser.Email = email
-	var ldapErr error
-	user, ldapErr = AllService.LdapService.GetUserInfoByEmailLocal(email)
-	if !(errors.Is(ldapErr, ErrLdapNotEnabled) || errors.Is(ldapErr, ErrLdapUserNotFound) || ldapErr == nil) {
-		return ldapErr, user
+	cfg, err := GetLdapSetting()
+	if err != nil {
+		return err, nil
 	}
-	if user.Id == 0 {
-		user = us.InfoByEmail(email)
-	}
-	if user == nil || user.Id == 0 {
-		user = &model.User{GroupId: model.DefaultUserGroupID}
-		oauthUser.ToUser(user)
+	directory := newLdapRequest()
+	ldapUser, err := directory.getUserInfoByEmailLdap(&cfg, email)
+	var prepared *model.User
+	if err == nil {
+		prepared, err = directory.prepareLdapUser(&cfg, ldapUser)
+		if revokeErr := revokeLdapAccess(&cfg, ldapUser); revokeErr != nil {
+			return revokeErr, nil
+		}
+		if err != nil {
+			return err, nil
+		}
+	} else if !errors.Is(err, ErrLdapNotEnabled) && !errors.Is(err, ErrLdapUserNotFound) {
+		return err, nil
 	}
 
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		config, err := lockVerifiedOauthProvider(tx, op, identity)
-		if err != nil {
-			return err
-		}
-		bound, err := userByOauthBinding(tx, op, oauthUser.OpenId)
-		if err != nil {
-			return err
-		}
-		if bound != nil {
-			user = bound
-			return nil
-		}
-		if user.Id == 0 {
-			var count int64
-			if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
+	commit := func(checked *ldapRecheckRequired) error {
+		return DB.Transaction(func(tx *gorm.DB) error {
+			strength := clause.LockingStrengthUpdate
+			if prepared != nil {
+				strength = clause.LockingStrengthShare
+			}
+			if err := lockLdapRevision(tx, cfg.Revision, strength); err != nil {
 				return err
 			}
-			isAdmin := count == 0
-			user.IsAdmin = &isAdmin
-			user.Status = model.COMMON_STATUS_ENABLE
-			if err := tx.Create(user).Error; err != nil {
-				return errors.New("OauthRegisterFailed")
+			config, err := lockVerifiedOauthProvider(tx, op, identity)
+			if err != nil {
+				return err
 			}
+			bound, err := userByOauthBinding(tx, op, oauthUser.OpenId)
+			if err != nil {
+				return err
+			}
+			if bound != nil {
+				user = bound
+				return nil
+			}
+			if prepared != nil {
+				user, err = mapLdapUser(tx, &cfg, prepared, checked)
+			} else {
+				user = &model.User{}
+				err = tx.Where("email = ?", email).First(user).Error
+			}
+			if prepared == nil && errors.Is(err, gorm.ErrRecordNotFound) {
+				user = &model.User{GroupId: model.DefaultUserGroupID}
+				oauthUser.ToUser(user)
+				var count int64
+				if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
+					return err
+				}
+				isAdmin := count == 0
+				user.IsAdmin = &isAdmin
+				user.Status = model.COMMON_STATUS_ENABLE
+				if err := tx.Create(user).Error; err != nil {
+					return errors.New("OauthRegisterFailed")
+				}
+			} else if err != nil {
+				return err
+			}
+			binding := &model.UserThird{}
+			binding.FromOauthUser(user.Id, oauthUser, config.OauthType, op)
+			return tx.Create(binding).Error
+		})
+	}
+	for attempt := 1; ; attempt++ {
+		user = nil
+		err = withLdapRecheck(&cfg, ldapUser, prepared, commit)
+		if err == nil || attempt == 3 || prepared == nil || !isMySQLDeadlock(err) {
+			return err, user
 		}
-		binding := &model.UserThird{}
-		binding.FromOauthUser(user.Id, oauthUser, config.OauthType, op)
-		return tx.Create(binding).Error
-	})
-	return err, user
+	}
 }
 
 // UserThirdsByUserId
@@ -584,17 +675,66 @@ func (us *UserService) getUserCount() int64 {
 	return count
 }
 
-func lastEnabledAdmin(tx *gorm.DB, id uint) (bool, error) {
-	if tx.Dialector.Name() == "sqlite" {
-		// SQLite ignores FOR UPDATE. Reserve its write lock before taking the read snapshot.
-		if err := tx.Model(&model.User{}).Where("1 = 0").UpdateColumn("id", gorm.Expr("id")).Error; err != nil {
-			return false, err
+func withAdminRemoval(id uint, cfg *model.LdapSetting, lastAdminMessage string, remove func(*gorm.DB) error) error {
+	if cfg == nil {
+		settings, err := GetLdapSetting()
+		if err != nil {
+			return err
+		}
+		cfg = &settings
+	}
+	findAdmins := func(db *gorm.DB) ([]model.User, error) {
+		var admins []model.User
+		err := db.Select("id", "email", "password", "ldap_synced").
+			Where("is_admin = ? AND status = ?", true, model.COMMON_STATUS_ENABLE).Order("id").Find(&admins).Error
+		return admins, err
+	}
+	removesLocalAdmin := func(admin model.User) bool {
+		return admin.Id == id && !admin.LdapSynced && admin.Password != ""
+	}
+	var replacement model.User
+	if cfg.Enable {
+		admins, err := findAdmins(DB)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(admins, removesLocalAdmin) {
+			directory := newLdapRequest()
+			for _, admin := range admins {
+				if admin.Id == id || admin.LdapSynced || admin.Password == "" || !validPasswordLoginEmail(admin.Email) {
+					continue
+				}
+				exists, err := directory.isEmailExists(cfg, admin.Email)
+				if err != nil {
+					return ErrLdapDirectoryUnavailable
+				}
+				if !exists {
+					replacement = admin
+					break
+				}
+			}
 		}
 	}
-	var admins []uint
-	err := tx.Model(&model.User{}).Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
-		Where("is_admin = ? AND status = ?", true, model.COMMON_STATUS_ENABLE).Order("id").Pluck("id", &admins).Error
-	return len(admins) == 1 && admins[0] == id, err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockLdapRevision(tx, cfg.Revision, clause.LockingStrengthUpdate); err != nil {
+			return err
+		}
+		admins, err := findAdmins(tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}))
+		if err != nil {
+			return err
+		}
+		if len(admins) == 1 && admins[0].Id == id {
+			return errors.New(lastAdminMessage)
+		}
+		if cfg.Enable && slices.ContainsFunc(admins, removesLocalAdmin) &&
+			!slices.ContainsFunc(admins, func(admin model.User) bool {
+				return admin.Id == replacement.Id && admin.Email == replacement.Email &&
+					admin.Password == replacement.Password && !admin.LdapSynced
+			}) {
+			return ErrLdapLastLocalAdmin
+		}
+		return remove(tx)
+	})
 }
 
 // UserTokenExpireTimestamp 生成用户token过期时间

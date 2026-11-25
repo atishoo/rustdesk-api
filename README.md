@@ -33,15 +33,15 @@
     - 授权登录
       - 支持`github`, `google` 和 `OIDC` 登录，
       - 支持`web后台`授权登录
-      - 支持`LDAP`(AD和OpenLDAP已测试), 如果API Server配置了LDAP
+      - 支持`LDAP`(AD和OpenLDAP已测试), 在管理控制台服务配置中启用
     - i18n
 - Web Admin
     - 用户管理
     - 设备管理
     - 地址簿管理
     - 标签管理
-    - Oauth 管理
-    - 配置LDAP, 配置文件或者环境变量
+    - OAuth 管理
+    - 服务配置（含 LDAP）
     - 登录日志
     - 链接日志
     - 文件传输日志
@@ -130,7 +130,7 @@ App 登录后将账号状态同步给被控端后台服务，由后台每 30 秒
     - **简单命令**：打开“服务命令” → “简单”，通过表单读取或设置服务参数。
     - **高级命令**：打开“服务命令” → “高级”，选择目标服务、发送命令并管理自定义命令。
 
-11. **LDAP 支持**。在 API Server 配置 LDAP 后，可以用目录邮箱登录。启用 `ldap.user.sync` 前，保留一个不受 LDAP 同步影响的启用本地管理员，并验证其可独立登录。同步会应用目录管理员组的权限撤回，包括仅剩一个管理员的情况。LDAP 凭据验证通过后，如果组权限查询或同步失败，本次登录会被拒绝。
+11. **LDAP 支持**。在管理控制台的服务配置中配置 LDAP 后，可以用目录邮箱登录。启用 LDAP 或修改已启用的配置时，使用 LDAP 用户搜索范围之外的本地管理员登录，并输入其当前密码验证。同步会应用目录管理员组的权限撤回，包括仅剩一个管理员的情况。LDAP 凭据验证通过后，如果组权限查询或同步失败，本次登录会被拒绝。
 
 设备由 App 连接本服务后注册、上报产生；管理控制台只维护已上报设备的别名，不提供手工新增或 CSV 导入、导出。个人设备标签仍由所属账号管理。
 
@@ -176,7 +176,13 @@ App 登录后将账号状态同步给被控端后台服务，由后台每 30 秒
 * 如果`gorm.type`是`sqlite`，则不需要配置mysql相关配置。
 * 语言如果不设置默认为`zh-CN`
 
+OAuth 配置新增 `proxy_url` 后，已有数据库需要由部署者手动为 `oauths` 表补充 `proxy_url TEXT` 字段。新数据库会按当前模型创建该字段。
+
+在管理控制台打开“服务配置 → LDAP 配置”填写目录连接和用户映射，保存后即时生效。新数据库会初始化 LDAP 表和账号字段。已有部署需要在启动新版 API 前，按当前模型补齐 `ldap_settings`、`ldap_account_verifications` 表和 `users.ldap_synced`、`users.ldap_permission_revision` 字段，再从页面录入 LDAP 参数。 [LDAP 模型](./model/ldapSetting.go) · [账号模型](./model/user.go)
+
 Vite 默认通过同源代理访问 API，使用密码登录无需配置来源白名单。本地控制台跨域调用 API，或使用 Vite 地址进行 WebAuth 和 OIDC 登录时，在本机 API 的 `app.admin-origins` 或 `CAPYLINK_API_APP_ADMIN_ORIGINS` 中显式添加实际开发地址，例如 `http://127.0.0.1:5174`。
+
+启用第三方 OAuth 登录时，API 默认直接访问 OAuth 提供商。若某个提供商需要 HTTP(S) 出站代理，可在该提供商的 OAuth 配置中填写 `proxy_url`。
 
 管理端 OAuth 请求须携带绝对 `redirect_url`，其来源须与请求来源一致，并已在 `app.admin-origins` 或 `capylink.api-server` 中配置。同源反向代理需保留原始 `Host`，将 `X-Forwarded-Proto` 设为公网协议，并在 `gin.trust-proxy` 或 `CAPYLINK_API_GIN_TRUST_PROXY` 中登记 API 的直接代理地址。
 
@@ -203,8 +209,6 @@ Web Client 连接统一要求登录。分享链接仍可创建，但打开链接
 | CAPYLINK_API_SMTP_CRYPTO                               | SMTP 加密方式，465 端口使用 `ssl`                                                | `ssl`                       |
 | -----ADMIN配置-----                                      | ----------                                                                     | ----------                   |
 | CAPYLINK_API_ADMIN_TITLE                               | 后台标题                                                                           | `capylink Api Admin`         |
-| CAPYLINK_API_ADMIN_HELLO                               | 后台欢迎语，可以使用`html`                                                               |                              |
-| CAPYLINK_API_ADMIN_HELLO_FILE                          | 后台欢迎语文件，如果内容多，使用文件更方便。<br>会覆盖`CAPYLINK_API_ADMIN_HELLO`                        | `./conf/admin/hello.html`    |
 | -----GIN配置-----                                        | ----------                                                                     | ----------                   |
 | CAPYLINK_API_GIN_TRUST_PROXY                           | 信任的代理 IP 列表，以 `,` 分隔，默认为空。反向代理部署时填入实际代理地址，登录保护才能按客户端 IP 分别计数 | 192.168.1.2,192.168.1.3 |
 | -----GORM配置-----                                       | ----------                                                                     | ---------------------------  |
@@ -226,9 +230,6 @@ Web Client 连接统一要求登录。分享链接仍可创建，但打开链接
 | CAPYLINK_API_CAPYLINK_KEY_FILE                         | 卡皮远控存放key的文件                                                               | `./conf/data/id_ed25519.pub` |
 | CAPYLINK_API_CAPYLINK_WEBCLIENT<br/>_MAGIC_QUERYONLINE | Web client v2 中是否启用新的在线状态查询方法; `1`:启用,`0`:不启用,默认不启用                            | `0`                          |
 | CAPYLINK_API_CAPYLINK_WS_HOST                          | 自定义Websocket Host                                                              | `wss://192.168.1.123:1234`   |
-| ----PROXY配置-----                                       | ----------                                                                     | ----------                   |
-| CAPYLINK_API_PROXY_ENABLE                              | 是否启用代理:`false`, `true`                                                         | `false`                      |
-| CAPYLINK_API_PROXY_HOST                                | 代理地址                                                                           | `http://127.0.0.1:1080`      |
 | ----JWT配置----                                          | --------                                                                       | --------                     |
 | CAPYLINK_API_JWT_KEY                                   | 用于校验 ID Server 登录令牌的自定义 JWT KEY；为空则不启用 JWT 校验 |                              |
 | CAPYLINK_API_JWT_EXPIRE_DURATION                       | JWT有效时间                                                                        | `168h`                       |

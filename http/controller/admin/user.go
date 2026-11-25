@@ -145,7 +145,7 @@ func (ct *User) Update(c *gin.Context) {
 	}
 	err := service.AllService.UserService.Update(u, fields...)
 	if err != nil {
-		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+userChangeErrorMessage(c, err))
 		return
 	}
 	response.Success(c, nil)
@@ -172,7 +172,7 @@ func (ct *User) UpdateStatus(c *gin.Context) {
 	}
 	u := &model.User{IdModel: model.IdModel{Id: f.Id}, Status: f.Status}
 	if err := service.AllService.UserService.Update(u, "status"); err != nil {
-		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+userChangeErrorMessage(c, err))
 		return
 	}
 	response.Success(c, nil)
@@ -208,10 +208,19 @@ func (ct *User) Delete(c *gin.Context) {
 			response.Success(c, nil)
 			return
 		}
-		response.Fail(c, 101, err.Error())
+		response.Fail(c, 101, userChangeErrorMessage(c, err))
 		return
 	}
 	response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+}
+
+func userChangeErrorMessage(c *gin.Context, err error) string {
+	switch err {
+	case service.ErrLdapLastLocalAdmin, service.ErrLdapDirectoryUnavailable, service.ErrLdapSettingsChanged, service.ErrLdapSettingsTableMissing:
+		return response.TranslateMsg(c, err.Error())
+	default:
+		return err.Error()
+	}
 }
 
 // UpdatePassword 修改密码
@@ -400,7 +409,7 @@ func (ct *User) Register(c *gin.Context) {
 		Uuid:   "",
 		Ip:     c.ClientIP(),
 		Type:   model.LoginLogTypeAccount,
-	}, false)
+	}, false, nil)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "SystemError"))
 		return

@@ -116,6 +116,9 @@ definitions:
         type: string
       client_secret:
         type: string
+      credential_revision:
+        description: 修改客户端凭据时提交列表或详情返回的凭据修订号。
+        type: string
       id:
         type: integer
       issuer:
@@ -128,12 +131,10 @@ definitions:
         type: boolean
       pkce_method:
         type: string
+      proxy_url:
+        type: string
       scopes:
         type: string
-    required:
-    - client_id
-    - client_secret
-    - oauth_type
     type: object
   admin.PeerBatchDeleteForm:
     properties:
@@ -562,6 +563,9 @@ definitions:
         type: string
       created_at:
         type: string
+      credential_revision:
+        description: 编辑时用于核对客户端凭据是否已变更。
+        type: string
       id:
         type: integer
       issuer:
@@ -573,6 +577,8 @@ definitions:
       pkce_enable:
         type: boolean
       pkce_method:
+        type: string
+      proxy_url:
         type: string
       scopes:
         type: string
@@ -589,6 +595,8 @@ definitions:
         type: integer
       page_size:
         type: integer
+      redirect_url:
+        type: string
       total:
         type: integer
     type: object

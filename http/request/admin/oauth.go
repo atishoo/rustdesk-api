@@ -19,30 +19,55 @@ type UnBindOauthForm struct {
 type OauthForm struct {
 	Id           uint    `json:"id"`
 	Op           string  `json:"op" validate:"omitempty"`
-	OauthType    string  `json:"oauth_type" validate:"required"`
-	Issuer       string  `json:"issuer" validate:"omitempty,url"`
+	OauthType    string  `json:"oauth_type"`
+	Issuer       *string `json:"issuer"`
+	ProxyURL     *string `json:"proxy_url"`
 	Scopes       *string `json:"scopes" validate:"omitempty"`
-	ClientId     string  `json:"client_id" validate:"required"`
-	ClientSecret string  `json:"client_secret" validate:"required"`
+	ClientId     *string `json:"client_id"`
+	ClientSecret *string `json:"client_secret"`
 	AutoRegister *bool   `json:"auto_register"`
 	PkceEnable   *bool   `json:"pkce_enable"`
-	PkceMethod   string  `json:"pkce_method"`
+	PkceMethod   *string `json:"pkce_method"`
+	// 修改客户端凭据时提交列表或详情返回的凭据修订号。
+	CredentialRevision string `json:"credential_revision"`
 }
 
 func (of *OauthForm) ToOauth() *model.Oauth {
-	oa := &model.Oauth{
-		Op:           of.Op,
-		OauthType:    of.OauthType,
-		ClientId:     of.ClientId,
-		ClientSecret: of.ClientSecret,
-		AutoRegister: of.AutoRegister,
-		Issuer:       of.Issuer,
-		PkceEnable:   of.PkceEnable,
-		PkceMethod:   of.PkceMethod,
+	oa := &model.Oauth{}
+	oa.Id = of.Id
+	of.Apply(oa)
+	return oa
+}
+
+func (of *OauthForm) Apply(oa *model.Oauth) {
+	if of.Op != "" {
+		oa.Op = of.Op
+	}
+	if of.OauthType != "" {
+		oa.OauthType = of.OauthType
+	}
+	if of.Issuer != nil {
+		oa.Issuer = *of.Issuer
 	}
 	if of.Scopes != nil {
 		oa.Scopes = *of.Scopes
 	}
-	oa.Id = of.Id
-	return oa
+	if of.ProxyURL != nil {
+		oa.ProxyURL = *of.ProxyURL
+	}
+	if of.ClientId != nil {
+		oa.ClientId = *of.ClientId
+	}
+	if of.ClientSecret != nil {
+		oa.ClientSecret = *of.ClientSecret
+	}
+	if of.AutoRegister != nil {
+		oa.AutoRegister = of.AutoRegister
+	}
+	if of.PkceEnable != nil {
+		oa.PkceEnable = of.PkceEnable
+	}
+	if of.PkceMethod != nil {
+		oa.PkceMethod = *of.PkceMethod
+	}
 }

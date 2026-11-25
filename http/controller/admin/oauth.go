@@ -208,6 +208,7 @@ func (o *Oauth) Detail(c *gin.Context) {
 	iid, _ := strconv.Atoi(id)
 	u := service.AllService.OauthService.InfoById(uint(iid))
 	if u.Id > 0 {
+		u.CredentialRevision = u.CredentialsRevision()
 		response.Success(c, u)
 		return
 	}
@@ -275,6 +276,10 @@ func (o *Oauth) List(c *gin.Context) {
 		return
 	}
 	res := service.AllService.OauthService.List(query.Page, query.PageSize, nil)
+	res.RedirectURL = service.OauthRedirectURL()
+	for _, provider := range res.Oauths {
+		provider.CredentialRevision = provider.CredentialsRevision()
+	}
 	response.Success(c, res)
 }
 
@@ -304,8 +309,11 @@ func (o *Oauth) Update(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
-	u := f.ToOauth()
-	err := service.AllService.OauthService.Update(u, f.Scopes != nil)
+	err := service.AllService.OauthService.Update(f.Id, f.CredentialRevision, f.Apply)
+	if errors.Is(err, service.ErrOauthCredentialsChanged) {
+		response.Fail(c, http.StatusConflict, response.TranslateMsg(c, "OauthCredentialsChanged"))
+		return
+	}
 	if errors.Is(err, service.ErrOauthIdentityBound) {
 		response.Fail(c, 101, response.TranslateMsg(c, "OauthIdentityBound"))
 		return

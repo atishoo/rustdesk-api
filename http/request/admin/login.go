@@ -1,8 +1,9 @@
 package admin
 
+import "github.com/lejianwen/rustdesk-api/v2/model"
+
 type Login struct {
-	Email     string `json:"email" validate:"required,email,lte=254" label:"邮箱"`
-	Password  string `json:"password,omitempty" validate:"required" label:"密码"`
+	model.NativeLoginCredentials
 	Platform  string `json:"platform" label:"平台"`
 	Captcha   string `json:"captcha,omitempty" label:"验证码"`
 	CaptchaId string `json:"captcha_id,omitempty"`

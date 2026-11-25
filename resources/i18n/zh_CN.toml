@@ -130,6 +130,30 @@ other = "请先确保可以用密码登录，或绑定另一个登录提供商�
 [LdapUnbindPasswordRequired]
 other = "请先输入登录密码，验证解绑后仍能登录。"
 
+[LdapSettingInvalid]
+other = "请检查 LDAP 地址和用户过滤器的格式。"
+
+[LdapEnableAttrPairRequired]
+other = "启用属性和启用属性值必须同时填写或同时留空。"
+
+[LdapBindingPasswordRequired]
+other = "启用 LDAP 需要填写绑定 DN 和密码。修改 LDAP 地址或绑定 DN 时，请重新填写绑定密码，或在停用 LDAP 后清除已保存的密码。"
+
+[LdapSettingsTableMissing]
+other = "缺少 LDAP 配置表。请按部署文档补齐数据库结构后重启 API。"
+
+[LdapLocalAdminRequired]
+other = "请使用 LDAP 用户搜索范围之外的本地管理员登录，并输入其当前密码。"
+
+[LdapLastLocalAdmin]
+other = "LDAP 已启用，请至少保留一位不在目录中且可以使用本地密码登录的管理员。"
+
+[LdapSettingsChanged]
+other = "LDAP 配置已变更，请刷新后重试。"
+
+[LdapDirectoryUnavailable]
+other = "LDAP 绑定或用户搜索失败。请检查目录地址、绑定凭据和用户搜索设置。"
+
 [LdapUnbindVerificationFailed]
 other = "无法验证密码登录，已保留账号绑定。"
 
@@ -138,6 +162,9 @@ other = "密码验证暂时受限，请稍后再试。"
 
 [OauthIdentityBound]
 other = "提供商已有账号绑定，无法删除或更改身份来源。"
+
+[OauthCredentialsChanged]
+other = "OAuth 客户端凭据已变更，请重新载入配置后编辑。"
 
 [OauthHasBeenSuccess]
 description = "Oauth has been success."
@@ -252,6 +279,9 @@ other = "不能共享给自己。"
 description = "Banned."
 one = "已被封禁。"
 other = "已被封禁。"
+
+[NativeLoginTemporarilyLimited]
+other = "当前网络的登录尝试次数过多，请稍后再试。"
 
 [RegisterSuccessWaitAdminConfirm]
 description = "Register success, wait for admin confirm."
