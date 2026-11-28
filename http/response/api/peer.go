@@ -3,12 +3,15 @@ package api
 import "github.com/lejianwen/rustdesk-api/v2/model"
 
 type GroupPeerPayload struct {
-	Id        string           `json:"id"`
-	Info      *PeerPayloadInfo `json:"info"`
-	Status    int              `json:"status"`
-	User      string           `json:"user"`
-	UserEmail string           `json:"user_email"`
-	Note      string           `json:"note"`
+	Id           string           `json:"id"`
+	RowId        uint             `json:"row_id"`
+	Alias        string           `json:"alias"`
+	CanEditAlias bool             `json:"can_edit_alias"`
+	Info         *PeerPayloadInfo `json:"info"`
+	Status       int              `json:"status"`
+	User         string           `json:"user"`
+	UserEmail    string           `json:"user_email"`
+	Note         string           `json:"note"`
 }
 type PeerPayloadInfo struct {
 	DeviceName string `json:"device_name"`
@@ -32,6 +35,10 @@ func (gpp *GroupPeerPayload) FromAddressBook(a *model.AddressBook, email string)
 
 func (gpp *GroupPeerPayload) FromPeer(p *model.Peer, email string) {
 	gpp.Id = string(p.Id)
+	gpp.RowId = p.RowId
+	if p.Alias != nil {
+		gpp.Alias = *p.Alias
+	}
 	gpp.Info = &PeerPayloadInfo{
 		DeviceName: p.Hostname,
 		Os:         p.Os,

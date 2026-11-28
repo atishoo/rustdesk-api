@@ -255,6 +255,12 @@ description = "Passwords do not match."
 one = "两次输入的密码不一致。"
 other = "两次输入的密码不一致。"
 
+[LocalPasswordResetUnavailable]
+other = "此账号无法使用本地密码登录。请使用原有登录方式或联系管理员。"
+
+[UserDisabled]
+other = "此账号已停用。"
+
 [SMTPNotConfigured]
 description = "SMTP is not configured."
 one = "SMTP 邮件服务尚未配置。"

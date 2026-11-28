@@ -67,7 +67,7 @@ func (g *Group) Users(c *gin.Context) {
 // @Param pageSize query int false "每页数量"
 // @Param status query int false "状态"
 // @Param accessible query string false "accessible"
-// @Success 200 {object} response.DataResponse
+// @Success 200 {object} response.DataResponse{data=[]apiResp.GroupPeerPayload}
 // @Failure 500 {object} response.Response
 // @Router /peers [get]
 // @Security BearerAuth
@@ -107,6 +107,7 @@ func (g *Group) Peers(c *gin.Context) {
 	for _, peer := range peers {
 		pp := &apiResp.GroupPeerPayload{}
 		pp.FromPeer(peer, emailsById[peer.UserId])
+		pp.CanEditAlias = peer.UserId == u.Id
 		data = append(data, pp)
 	}
 	c.JSON(http.StatusOK, response.DataResponse{

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,15 @@ const (
 	emailCodeLifetime        = 10 * time.Minute
 	emailCodeInterval        = time.Minute
 )
+
+var passwordResetLimiter = utils.NewLoginLimiter(utils.SecurityPolicy{
+	CaptchaThreshold: -1,
+	BanThreshold:     1,
+	AttemptsWindow:   emailCodeInterval,
+	BanDuration:      emailCodeInterval,
+})
+
+var errSMTPNotConfigured = errors.New("SMTPNotConfigured")
 
 func ValidateEmailAddress(value string) bool {
 	value = strings.TrimSpace(value)
@@ -56,6 +66,9 @@ func SendEmailCode(email, purpose string) error {
 	var latest model.EmailCode
 	if err := DB.Where("email = ? AND purpose = ?", email, purpose).Order("created_at DESC").First(&latest).Error; err == nil {
 		if time.Since(time.Time(latest.CreatedAt)) < emailCodeInterval {
+			if purpose == EmailCodePurposeReset {
+				return nil
+			}
 			return errors.New("EmailCodeTooFrequent")
 		}
 	}
@@ -67,14 +80,28 @@ func SendEmailCode(email, purpose string) error {
 		if AllService.UserService.InfoByEmail(email).Id > 0 || ldapExists {
 			return errors.New("EmailExists")
 		}
-	}
-	if purpose == EmailCodePurposeReset && AllService.UserService.InfoByEmail(email).Id == 0 {
+	} else if !AllService.UserService.reservePasswordResetAttempt(email) {
 		return nil
 	}
-
+	fail := func(step string, err error) error {
+		if purpose != EmailCodePurposeReset {
+			return err
+		}
+		// SMTP replies and database errors can include recipient or configuration details.
+		var reply *textproto.Error
+		switch {
+		case errors.Is(err, errSMTPNotConfigured):
+			Logger.Warn("password reset code email failed: SMTP is not configured")
+		case errors.As(err, &reply):
+			Logger.Warnf("password reset code email failed with SMTP status %d", reply.Code)
+		default:
+			Logger.Warnf("password reset code: %s failed (%T)", step, err)
+		}
+		return nil
+	}
 	code, err := randomEmailCode()
 	if err != nil {
-		return err
+		return fail("generation", err)
 	}
 	item := &model.EmailCode{
 		Email:     email,
@@ -83,14 +110,16 @@ func SendEmailCode(email, purpose string) error {
 		ExpiresAt: time.Now().Add(emailCodeLifetime),
 	}
 	if err := DB.Where("email = ? AND purpose = ? AND used = ?", email, purpose, false).Delete(&model.EmailCode{}).Error; err != nil {
-		return err
+		return fail("previous code cleanup", err)
 	}
 	if err := DB.Create(item).Error; err != nil {
-		return err
+		return fail("storage", err)
 	}
 	if err := sendEmail(email, code); err != nil {
-		DB.Delete(item)
-		return err
+		if cleanupErr := DB.Delete(item).Error; cleanupErr != nil {
+			fail("undelivered code cleanup", cleanupErr)
+		}
+		return fail("email delivery", err)
 	}
 	return nil
 }
@@ -175,14 +204,72 @@ func registrationStateTx(tx *gorm.DB) (bool, error) {
 	return setting.RegisterEnabled, nil
 }
 
+func (us *UserService) reservePasswordResetAttempt(email string) bool {
+	if !validPasswordLoginEmail(email) {
+		return false
+	}
+	user := us.InfoByEmail(email)
+	if user.Id == 0 {
+		return false
+	}
+	cfg, err := GetLdapSetting()
+	if err != nil || us.checkPasswordResetAccount(user, cfg.Enable) != nil {
+		return false
+	}
+	if !passwordResetLimiter.ReserveAttempt(strconv.FormatUint(uint64(user.Id), 10)) {
+		return false
+	}
+	ldapExists, err := newLdapRequest().isEmailExists(&cfg, email)
+	return err == nil && !ldapExists
+}
+
+func (us *UserService) checkPasswordResetAccount(user *model.User, ldapEnabled bool) error {
+	if !us.CheckUserEnable(user) {
+		return errors.New("UserDisabled")
+	}
+	if !allowsLocalPassword(ldapEnabled, user) {
+		return errors.New("LocalPasswordResetUnavailable")
+	}
+	return nil
+}
+
 func (us *UserService) ResetPasswordByEmail(email, password, code string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if !validPasswordLoginEmail(email) {
+		return errors.New("InvalidEmail")
+	}
+	cfg, err := GetLdapSetting()
+	if err != nil {
+		return errors.New("OperationFailed")
+	}
+	var ldapExists bool
+	var lookupErr error
+	if cfg.Enable {
+		if _, err := findValidEmailCode(DB, email, EmailCodePurposeReset, code); err != nil {
+			return err
+		}
+		// Verify the directory before locking the configuration and account rows.
+		ldapExists, lookupErr = newLdapRequest().isEmailExists(&cfg, email)
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockLdapRevision(tx, cfg.Revision, clause.LockingStrengthShare); err != nil {
+			return err
+		}
 		if err := consumeEmailCodeTx(tx, email, EmailCodePurposeReset, code); err != nil {
 			return err
 		}
 		var user model.User
-		if err := tx.Where("email = ?", email).First(&user).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Where("email = ?", email).First(&user).Error; err != nil {
 			return errors.New("ItemNotFound")
+		}
+		if err := us.checkPasswordResetAccount(&user, cfg.Enable); err != nil {
+			return err
+		}
+		if ldapExists {
+			return errors.New("LocalPasswordResetUnavailable")
+		}
+		if lookupErr != nil {
+			return ErrLdapDirectoryUnavailable
 		}
 		hashed, err := encryptPassword(password)
 		if err != nil {
@@ -196,16 +283,24 @@ func (us *UserService) ResetPasswordByEmail(email, password, code string) error 
 }
 
 func consumeEmailCodeTx(tx *gorm.DB, email, purpose, code string) error {
+	item, err := findValidEmailCode(tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}), email, purpose, code)
+	if err != nil {
+		return err
+	}
+	return tx.Model(item).Update("used", true).Error
+}
+
+func findValidEmailCode(db *gorm.DB, email, purpose, code string) (*model.EmailCode, error) {
 	var item model.EmailCode
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+	if err := db.Where(
 		"email = ? AND purpose = ? AND used = ? AND expires_at > ?", email, purpose, false, time.Now(),
 	).Order("created_at DESC").First(&item).Error; err != nil {
-		return errors.New("EmailCodeInvalid")
+		return nil, errors.New("EmailCodeInvalid")
 	}
 	if item.CodeHash != hashEmailCode(email, purpose, code) {
-		return errors.New("EmailCodeInvalid")
+		return nil, errors.New("EmailCodeInvalid")
 	}
-	return tx.Model(&item).Update("used", true).Error
+	return &item, nil
 }
 
 func randomEmailCode() (string, error) {
@@ -231,7 +326,7 @@ func encryptPassword(password string) (string, error) {
 
 func sendEmail(to, code string) error {
 	if Config.SMTP.Host == "" || Config.SMTP.User == "" || Config.SMTP.Password == "" {
-		return errors.New("SMTPNotConfigured")
+		return errSMTPNotConfigured
 	}
 	port := Config.SMTP.Port
 	if port == 0 {

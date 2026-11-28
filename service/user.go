@@ -85,7 +85,7 @@ func (us *UserService) InfoByEmailPassword(email, password string) (*model.User,
 	if u.Id == 0 {
 		return nil, nil
 	}
-	if cfg.Enable && (u.LdapSynced || u.IsAdmin == nil || !*u.IsAdmin) {
+	if !allowsLocalPassword(cfg.Enable, u) {
 		return nil, nil
 	}
 	ok, newHash, err := utils.VerifyPassword(u.Password, password)
@@ -97,6 +97,10 @@ func (us *UserService) InfoByEmailPassword(email, password string) (*model.User,
 		u.Password = newHash
 	}
 	return u, &PasswordLogin{settings: &cfg}
+}
+
+func allowsLocalPassword(ldapEnabled bool, user *model.User) bool {
+	return !ldapEnabled || (!user.LdapSynced && user.IsAdmin != nil && *user.IsAdmin)
 }
 
 // InfoByAccesstoken 根据accesstoken取用户信息

@@ -34,6 +34,11 @@ type PeerForm struct {
 	Version  string               `json:"version"`
 }
 
+type PeerAliasForm struct {
+	RowId uint    `json:"row_id"`
+	Alias *string `json:"alias"`
+}
+
 func (pf *PeerForm) ToPeer() *model.Peer {
 	return &model.Peer{
 		Cpu:      pf.Cpu,

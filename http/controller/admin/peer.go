@@ -10,7 +10,6 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/global"
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
-	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"gorm.io/gorm"
 )
@@ -136,22 +135,17 @@ func (ct *Peer) Update(c *gin.Context) {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
-	if f.RowId == 0 || f.Alias == nil {
+	err := service.AllService.PeerService.UpdateAlias(f.RowId, f.Alias, nil)
+	switch {
+	case errors.Is(err, service.ErrInvalidPeerAlias):
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
-		return
-	}
-	errList := global.Validator.ValidStruct(c, f)
-	if len(errList) > 0 {
-		response.Fail(c, 101, errList[0])
-		return
-	}
-	u := &model.Peer{RowId: f.RowId, Alias: f.Alias}
-	err := service.AllService.PeerService.Update(u)
-	if err != nil {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+	case err != nil:
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())
-		return
+	default:
+		response.Success(c, nil)
 	}
-	response.Success(c, nil)
 }
 
 // Delete 删除

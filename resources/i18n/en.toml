@@ -253,6 +253,12 @@ description = "Passwords do not match."
 one = "The passwords do not match."
 other = "The passwords do not match."
 
+[LocalPasswordResetUnavailable]
+other = "This account cannot sign in with a local password. Use its existing sign-in method or contact an administrator."
+
+[UserDisabled]
+other = "This account is disabled."
+
 [SMTPNotConfigured]
 description = "SMTP is not configured."
 one = "SMTP email service is not configured."

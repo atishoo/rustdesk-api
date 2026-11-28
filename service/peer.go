@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/lejianwen/rustdesk-api/v2/lib/ipregion"
 	"github.com/lejianwen/rustdesk-api/v2/model"
@@ -14,6 +16,8 @@ import (
 
 type PeerService struct {
 }
+
+var ErrInvalidPeerAlias = errors.New("ParamsError")
 
 func (ps *PeerService) InfoByRowId(id uint) *model.Peer {
 	p := &model.Peer{}
@@ -107,7 +111,7 @@ func (ps *PeerService) ListGroupPeers(userIds []uint, page, pageSize uint) ([]*m
 		return nil, 0, err
 	}
 	var peers []*model.Peer
-	err := visible.Select("peers.id, peers.user_id, peers.hostname, peers.os, peers.username").
+	err := visible.Select("peers.row_id, peers.id, peers.user_id, peers.hostname, peers.os, peers.username, peers.alias").
 		Order("peers.row_id").Scopes(Paginate(page, pageSize)).Find(&peers).Error
 	return peers, total, err
 }
@@ -237,9 +241,32 @@ func (ps *PeerService) BatchDelete(ids []uint) error {
 	})
 }
 
-// Update updates only the device alias maintained by the console.
-func (ps *PeerService) Update(u *model.Peer) error {
-	return DB.Model(u).Select("alias").Updates(u).Error
+func (ps *PeerService) UpdateAlias(rowID uint, alias *string, ownerID *uint) error {
+	if rowID == 0 || alias == nil {
+		return ErrInvalidPeerAlias
+	}
+	name := strings.TrimSpace(*alias)
+	// MySQL string fields default to varchar(256).
+	if utf8.RuneCountInString(name) > 256 || strings.ContainsRune(name, 0) {
+		return ErrInvalidPeerAlias
+	}
+	query := DB.Model(&model.Peer{}).Where("row_id = ?", rowID)
+	if ownerID != nil {
+		query = query.Where("user_id = ?", *ownerID)
+	}
+	result := query.Session(&gorm.Session{}).Update("alias", name)
+	if result.Error != nil || result.RowsAffected > 0 {
+		return result.Error
+	}
+	// MySQL can report zero changed rows when the requested value is already stored.
+	var peer model.Peer
+	if err := query.Select("alias").Take(&peer).Error; err != nil {
+		return err
+	}
+	if peer.Alias == nil || *peer.Alias != name {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // BatchUpdateTags replaces the account tags for a set of devices.

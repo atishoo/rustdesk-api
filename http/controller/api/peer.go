@@ -11,9 +11,40 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
+	"gorm.io/gorm"
 )
 
 type Peer struct {
+}
+
+// UpdateAlias 更新当前账号设备的别名。
+// @Tags 设备
+// @Summary 更新设备别名
+// @Accept json
+// @Produce json
+// @Param body body requstform.PeerAliasForm true "设备记录和别名，空字符串清空别名"
+// @Success 204
+// @Failure 400,401,404,500 {object} response.ErrorResponse
+// @Router /peer/alias [put]
+// @Security BearerAuth
+func (p *Peer) UpdateAlias(c *gin.Context) {
+	var form requstform.PeerAliasForm
+	if err := c.ShouldBindJSON(&form); err != nil {
+		response.Error(c, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	u := service.AllService.UserService.CurUser(c)
+	err := service.AllService.PeerService.UpdateAlias(form.RowId, form.Alias, &u.Id)
+	switch {
+	case errors.Is(err, service.ErrInvalidPeerAlias):
+		response.Error(c, response.TranslateMsg(c, "ParamsError"))
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		c.JSON(http.StatusNotFound, response.ErrorResponse{Error: response.TranslateMsg(c, "ItemNotFound")})
+	case err != nil:
+		c.JSON(http.StatusInternalServerError, response.ErrorResponse{Error: response.TranslateMsg(c, "OperationFailed")})
+	default:
+		c.Status(http.StatusNoContent)
+	}
 }
 
 func (p *Peer) DeviceCredential(c *gin.Context) {

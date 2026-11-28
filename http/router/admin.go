@@ -259,6 +259,7 @@ func MyBind(rg *gin.RouterGroup) {
 	{
 		cont := &my.Peer{}
 		rg.GET("/my/peer/list", cont.List)
+		rg.POST("/my/peer/update", cont.UpdateAlias)
 		rg.POST("/my/peer/batchUpdateTags", cont.BatchUpdateTags)
 		rg.POST("/my/peer/shareByWebClient", cont.ShareByWebClient)
 

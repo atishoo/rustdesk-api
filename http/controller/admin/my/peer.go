@@ -66,6 +66,35 @@ func (ct *Peer) List(c *gin.Context) {
 	response.Success(c, res)
 }
 
+// UpdateAlias 更新当前账号设备的别名。
+// @Tags 我的设备
+// @Summary 更新设备别名
+// @Accept json
+// @Produce json
+// @Param body body admin.PeerForm true "设备记录和别名，空字符串清空别名"
+// @Success 200 {object} response.Response
+// @Router /admin/my/peer/update [post]
+// @Security token
+func (ct *Peer) UpdateAlias(c *gin.Context) {
+	var form admin.PeerForm
+	if err := c.ShouldBindJSON(&form); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+		return
+	}
+	u := service.AllService.UserService.CurUser(c)
+	err := service.AllService.PeerService.UpdateAlias(form.RowId, form.Alias, &u.Id)
+	switch {
+	case errors.Is(err, service.ErrInvalidPeerAlias):
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		response.Fail(c, 101, response.TranslateMsg(c, "ItemNotFound"))
+	case err != nil:
+		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+	default:
+		response.Success(c, nil)
+	}
+}
+
 // BatchUpdateTags replaces the account tags for the selected devices.
 // @Tags 我的设备
 // @Summary 批量更新设备标签
